@@ -68,7 +68,7 @@ elif st.session_state.menu_actual == "BES":
         # El uploader nativo acepta Ctrl+V si haces clic en él
         file_head = st.file_uploader("Pega o sube el recorte del Cabezal", type=["jpg", "png", "jpeg"], key="u_head")
         if file_head:
-            img_head = Image.open(file_head)
+            img_head.thumbnail((800, 800))
             st.image(img_head, width=300)
             if st.button("🔍 Extraer Cabezal"):
                 with st.spinner("Analizando cabezal..."):
