@@ -1,4 +1,22 @@
 import streamlit as st
+import google.generativeai as genai
+from PIL import Image
+
+def skill_vision_well_plan(imagen_em):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    prompt = """
+    Analiza este Estado Mecánico de un pozo petrolero y extrae los siguientes datos en formato JSON:
+    1. Sección B (Tubing Head)
+    2. OD del Tubing de producción
+    3. Profundidad de asentamiento de la bomba BES (ESP)
+    4. OD del Casing de producción
+    
+    Si no encuentras un dato, pon 'No detectado'.
+    """
+    
+    response = model.generate_content([prompt, imagen_em])
+    return response.text
 
 # 1. Configuración de página de alto nivel
 st.set_page_config(
@@ -84,36 +102,23 @@ elif st.session_state.menu_actual == "BES":
     st.title("⚙️ Retiro y/o Mantenimiento de BES")
     st.markdown("---")
 
-    # 1. ESTADO MECÁNICO Y SECCIÓN B
-    st.header("1. Estado Mecánico y Cabezal")
+    elif st.session_state.menu_actual == "BES":
+    st.title("⚙️ Módulo de Extracción Inteligente")
     
-    col_a, col_b = st.columns(2)
+    subida = st.file_uploader("Carga la imagen del Estado Mecánico", type=["jpg", "png", "jpeg"])
     
-    with col_a:
-        st.subheader("Configuración del Cabezal")
-        seccion_b = st.selectbox("Sección B (Tubing Head)", 
-                                ["11\" 3K", "11\" 5K", "9\" 3K", "7 1/16\" 5K"])
-        adaptador = st.selectbox("Adaptador (Bonnet/Tubing Hanger)", 
-                                ["Rams-Type", "Mandrel-Type", "ESP Hanger with Penetrator"])
+    if subida:
+        img = Image.open(subida)
+        st.image(img, caption="Estado Mecánico Cargado", width=400)
         
-        # Lógica de sugerencia de BOP basada en Sección B
-        bop_sugerida = "11\" 3K Dual Ram" if "11\"" in seccion_b else "7 1/16\" 5K Dual Ram"
-        st.info(f"💡 **Sugerencia de BOP:** Se recomienda instalar sistema de BOP {bop_sugerida} acorde a la Sección B.")
-
-    with col_b:
-        st.subheader("Sarta de Producción")
-        tubing_od = st.radio("Diámetro de Tubing Actual (in)", ["3 1/2", "4 1/2"], horizontal=True)
-        grado_tbg = st.selectbox("Grado y Conexión", ["L-80 EUE", "J-55 EUE", "L-80 BTC"])
-        
-        # Lógica de herramientas de manejo
-        if tubing_od == "3 1/2":
-            herramientas = "Elevadores 3 1/2, Cuñas 3 1/2, Llaves de potencia (Jaw size 3 1/2)"
-        else:
-            herramientas = "Elevadores 4 1/2, Cuñas 4 1/2, Llaves de potencia (Jaw size 4 1/2)"
-            
-        st.warning(f"🛠️ **Herramientas de Manejo:** Preparar {herramientas}.")
-
-    st.markdown("---")
+        if st.button("🔍 Ejecutar Skill de Visión"):
+            with st.spinner("Gemini analizando esquema mecánico..."):
+                # Aquí la IA lee el documento como el que me enviaste
+                resultado = skill_vision_well_plan(img)
+                st.markdown("### Datos Extraídos Automáticamente:")
+                st.code(resultado)
+                
+                st.info("💡 Ahora estos datos alimentarán automáticamente los cálculos de BOP y Herramientas.")
 
     # 2. DETALLES DE LA BES
     st.header("2. Configuración de la BES")
