@@ -4,44 +4,50 @@ from PIL import Image
 import io
 
 # ==========================================
-# 1. CONFIGURACIÓN DE ACCESO (ACTUALIZADA)
+# 1. CONFIGURACIÓN DE ACCESO
 # ==========================================
 API_KEY = "AIzaSyAeGSLMzgyWohox06qXtJR7fFbUyMjeZA0"
 
 def skill_vision_well_plan(imagen_pil, instruccion):
     try:
-        # Configuración limpia
+        # Limpieza de la llave y configuración
         genai.configure(api_key=API_KEY.strip())
         
         # Selección del modelo estable
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Optimización de imagen para red de campo (Calidad 50%)
+        # Optimización de imagen para red de campo (Calidad 40%)
         buf = io.BytesIO()
-        imagen_pil.save(buf, format='JPEG', quality=50)
+        imagen_pil.save(buf, format='JPEG', quality=40)
         img_bytes = buf.getvalue()
         
-        # Prompt técnico para ingeniería
-        prompt_final = f"Como experto en ingeniería de petróleos, extrae del Estado Mecánico: {instruccion}. Responde solo con datos técnicos."
+        # Estructura de mensaje simplificada (Formato Gemini 1.5)
+        prompt_tecnico = f"Actúa como experto en Well Planning. Extrae: {instruccion}. Solo datos técnicos."
         
-        # Envío simplificado (Formato compatible con >= 0.8.0)
-        response = model.generate_content([
-            prompt_final,
+        contenido = [
+            prompt_tecnico,
             {"mime_type": "image/jpeg", "data": img_bytes}
-        ])
+        ]
+        
+        response = model.generate_content(contenido)
         
         if response.text:
             return response.text
         else:
-            return "⚠️ No se detectaron datos legibles en el recorte."
+            return "⚠️ La IA no devolvió texto. Intenta con un recorte más nítido."
 
     except Exception as e:
         error_msg = str(e)
+        # Importamos la librería aquí para diagnosticar la versión en el mensaje de error
+        import google.generativeai as gai
+        version_actual = gai.__version__
+        
         if "404" in error_msg:
-            return "❌ ERROR 404: El servidor aún no reconoce el modelo. Por favor, reinicia la App en Streamlit Cloud (Reboot) para que instale las librerías del requirements.txt."
+            return f"❌ ERROR 404: El modelo no existe en esta versión ({version_actual}). Por favor, haz 'Reboot' en Streamlit Cloud."
         if "400" in error_msg:
-            return "❌ ERROR 400: La API Key no es válida. Verifica que no falten caracteres."
-        return f"⚠️ Error Técnico: {error_msg}"
+            return f"❌ ERROR 400: API Key inválida o mal copiada. (Versión detectada: {version_actual})"
+        
+        return f"⚠️ Error Técnico: {error_msg} | v.{version_actual}"
 
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
