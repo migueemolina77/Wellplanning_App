@@ -61,27 +61,38 @@ elif st.session_state.menu_actual == "BES":
     tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
 
     # Lógica para procesar y enviar imagen (reutilizable)
-    def procesar_extraccion(archivo, instruccion, key_btn):
+   def procesar_extraccion(archivo, instruccion, key_btn):
         if archivo:
             img = Image.open(archivo)
-            # Reducción visual para la App
             img.thumbnail((800, 800))
             st.image(img, width=400, caption="Recorte detectado")
             
             if st.button(f"🔍 Ejecutar Escáner", key=key_btn):
-                progreso = st.progress(0, text="Optimizando imagen para campo...")
+                # Usamos un contenedor vacío para actualizar mensajes de estado
+                status_container = st.empty()
+                progreso = st.progress(40)
                 
-                # Compresión real para envío rápido (Quality 60)
-                buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=60)
-                progreso.progress(40, text="Subiendo datos al servidor de IA...")
-                
-                with st.spinner("Interpretando datos técnicos..."):
-                    resultado = skill_vision_well_plan(img, instruccion)
-                    progreso.progress(100, text="¡Finalizado!")
-                    time.sleep(1)
-                    st.success(f"**Resultado de la IA:** \n\n {resultado}")
-                    progreso.empty()
+                try:
+                    with st.spinner("Conectando con el servidor de IA..."):
+                        # Fase 1: Envío
+                        status_container.info("⏳ Enviando datos a la nube... (Paso 1/2)")
+                        
+                        # Fase 2: Procesamiento (Aquí es donde se quedaba pegado)
+                        # Agregamos un pequeño delay visual para que veas el cambio de estado
+                        time.sleep(1) 
+                        status_container.warning("🤖 La IA está leyendo el Estado Mecánico... Esto puede tardar según el internet. (Paso 2/2)")
+                        
+                        # Llamada real a la IA
+                        resultado = skill_vision_well_plan(img, instruccion)
+                        
+                        # Finalización
+                        progreso.progress(100)
+                        status_container.success("✅ ¡Datos recibidos con éxito!")
+                        st.markdown(f"### Resultado Extraído:\n{resultado}")
+                        
+                except Exception as e:
+                    status_container.error(f"❌ Error de comunicación: {str(e)}")
+                    st.button("Reintentar conexión")
 
     with tab1:
         st.subheader("Información de Sección B / Cabezal")
