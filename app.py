@@ -1,98 +1,122 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import io
+import time
 
 # 1. Función de IA Optimizada
 def skill_vision_well_plan(imagen_em, instruccion_especifica):
     model = genai.GenerativeModel('gemini-1.5-flash')
     prompt_turbo = f"""
-    Actúa como un experto en Well Planning. 
-    Analiza este recorte y extrae únicamente: {instruccion_especifica}.
-    Respuesta corta y directa. Si no lo ves, di 'No detectado'.
+    Actúa como un experto en Well Planning de Ecopetrol. 
+    Analiza este recorte de un Estado Mecánico y extrae: {instruccion_especifica}.
+    Respuesta corta, técnica y directa. Si no lo ves, di 'No detectado'.
     """
     try:
         response = model.generate_content([prompt_turbo, imagen_em])
         return response.text
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error de conexión: {str(e)}"
 
 # 2. Configuración de página
-st.set_page_config(page_title="Well Planning CLO", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - Operaciones", page_icon="🏗️", layout="wide")
 
-# 3. Inicialización del estado
+# 3. Inicialización del estado del menú
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "Home"
 
-# 4. Sidebar
+# 4. Sidebar con Logo
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
-    if st.button("🏠 Volver al Home"):
+    st.markdown("---")
+    if st.button("🏠 Volver al Home", use_container_width=True):
         st.session_state.menu_actual = "Home"
         st.rerun()
 
-# 5. Lógica de Navegación
+# 5. Lógica de Navegación Principal
 if st.session_state.menu_actual == "Home":
     st.title("🚧 Construcción Well Plan - Operaciones CUA")
+    st.subheader("Seleccione el tipo de operación para iniciar:")
+    
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🌑 1. Abandonos"):
+        if st.button("🌑 1. Abandonos", use_container_width=True):
             st.session_state.menu_actual = "Abandonos"
             st.rerun()
-        if st.button("⚙️ 2. Retiro y/o Mantenimiento BES"):
+        if st.button("⚙️ 2. Retiro y/o Mantenimiento BES", use_container_width=True):
             st.session_state.menu_actual = "BES"
             st.rerun()
     with col2:
-        if st.button("📊 3. Rediseño SLA"):
+        if st.button("📊 3. Rediseño SLA", use_container_width=True):
             st.session_state.menu_actual = "SLA"
             st.rerun()
-        if st.button("🛠️ 4. Workover"):
+        if st.button("🛠️ 4. Workover", use_container_width=True):
             st.session_state.menu_actual = "Workover"
             st.rerun()
 
 elif st.session_state.menu_actual == "BES":
-    st.title("⚙️ Módulo de Extracción por Secciones")
-    st.info("💡 Haz clic en 'Browse files' y presiona Ctrl+V para pegar tu captura.")
+    st.title("⚙️ Módulo de Extracción por Secciones (BES)")
+    st.info("💡 **Tip:** Haz clic en el recuadro de carga y presiona **Ctrl + V** para pegar tu captura de pantalla.")
 
-    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta / BES"])
+    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
+
+    # Lógica para procesar y enviar imagen (reutilizable)
+    def procesar_extraccion(archivo, instruccion, key_btn):
+        if archivo:
+            img = Image.open(archivo)
+            # Reducción visual para la App
+            img.thumbnail((800, 800))
+            st.image(img, width=400, caption="Recorte detectado")
+            
+            if st.button(f"🔍 Ejecutar Escáner", key=key_btn):
+                progreso = st.progress(0, text="Optimizando imagen para campo...")
+                
+                # Compresión real para envío rápido (Quality 60)
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=60)
+                progreso.progress(40, text="Subiendo datos al servidor de IA...")
+                
+                with st.spinner("Interpretando datos técnicos..."):
+                    resultado = skill_vision_well_plan(img, instruccion)
+                    progreso.progress(100, text="¡Finalizado!")
+                    time.sleep(1)
+                    st.success(f"**Resultado de la IA:** \n\n {resultado}")
+                    progreso.empty()
 
     with tab1:
-        file_head = st.file_uploader("Pega recorte del Cabezal", type=["jpg", "png", "jpeg"], key="u_head")
-        if file_head:
-            img_head = Image.open(file_head)
-            img_head.thumbnail((800, 800))
-            st.image(img_head, width=300)
-            if st.button("🔍 Extraer Cabezal"):
-                with st.spinner("Analizando..."):
-                    res = skill_vision_well_plan(img_head, "Tipo de Sección B y presión nominal")
-                    st.success(res)
+        st.subheader("Información de Sección B / Cabezal")
+        file_head = st.file_uploader("Pega/Sube recorte del Cabezal", type=["jpg", "png", "jpeg"], key="u_head")
+        procesar_extraccion(file_head, "Tipo de Sección B (Tubing Head) y Presión Nominal (psi)", "btn_head")
 
     with tab2:
-        file_liner = st.file_uploader("Pega recorte del Liner", type=["jpg", "png", "jpeg"], key="u_liner")
-        if file_liner:
-            img_liner = Image.open(file_liner)
-            img_liner.thumbnail((800, 800))
-            st.image(img_liner, width=300)
-            if st.button("🔍 Extraer Liner"):
-                with st.spinner("Analizando..."):
-                    res = skill_vision_well_plan(img_liner, "OD Casing, peso y grado")
-                    st.success(res)
+        st.subheader("Información de Revestimiento")
+        file_liner = st.file_uploader("Pega/Sube recorte del Liner/Casing", type=["jpg", "png", "jpeg"], key="u_liner")
+        procesar_extraccion(file_liner, "OD del Casing, Peso (lb/ft) y Grado del acero", "btn_liner")
 
     with tab3:
-        file_string = st.file_uploader("Pega recorte de la Sarta", type=["jpg", "png", "jpeg"], key="u_string")
-        if file_string:
-            img_string = Image.open(file_string)
-            img_string.thumbnail((800, 800))
-            st.image(img_string, width=300)
-            if st.button("🔍 Extraer Sarta"):
-                with st.spinner("Analizando..."):
-                    res = skill_vision_well_plan(img_string, "OD Tubing y profundidad ESP")
-                    st.success(res)
+        st.subheader("Información de Sarta y Equipo BES")
+        file_string = st.file_uploader("Pega/Sube recorte de la Sarta", type=["jpg", "png", "jpeg"], key="u_string")
+        procesar_extraccion(file_string, "OD del Tubing, profundidad de la bomba BES (ft) y número de etapas si aplica", "btn_string")
 
+    st.markdown("---")
+    st.subheader("2. Verificación Manual")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.number_input("Profundidad de asentamiento (ft MD)", value=3433)
+        st.selectbox("Diámetro de Tubing", ["3 1/2\"", "4 1/2\""])
+    with c2:
+        st.selectbox("Sección B", ["11\" 2K", "11\" 3K", "11\" 5K"])
+        st.checkbox("¿Cuenta con sensor de fondo?")
+
+# Espacios para otros módulos
 elif st.session_state.menu_actual == "Abandonos":
     st.title("🌑 Módulo de Abandonos")
+    st.write("Contenido en desarrollo...")
 
 elif st.session_state.menu_actual == "SLA":
     st.title("📊 Rediseño SLA")
+    st.write("Contenido en desarrollo...")
 
 elif st.session_state.menu_actual == "Workover":
     st.title("🛠️ Módulo de Workover")
+    st.write("Contenido en desarrollo...")
