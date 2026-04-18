@@ -7,31 +7,39 @@ import time
 # ==========================================
 # 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN
 # ==========================================
-# Reemplaza 'TU_API_KEY' con tu clave real
-API_KEY = "TU_API_KEY_AQUI" 
+
+# OPCIÓN A: Pegar la llave directamente (Para pruebas locales)
+API_KEY = "TU_API_KEY_AQUÍ" 
+
+# OPCIÓN B: Usar Secrets de Streamlit (Para cuando subas la app a la web)
+# API_KEY = st.secrets["GEMINI_KEY"]
 
 def skill_vision_well_plan(imagen_pil, instruccion_especifica):
     """
-    Versión 'Field-Ready': Convierte imagen a bytes ultra-ligeros 
-    y usa transporte REST para redes inestables.
+    Versión optimizada para redes de campo (Rubiales/CUA).
+    Usa transporte REST y compresión agresiva.
     """
     try:
-        # Configuración forzada en cada llamada para evitar desconexiones
+        # Validar que la llave no esté vacía
+        if API_KEY == "TU_API_KEY_AQUÍ" or not API_KEY:
+            return "⚠️ ERROR: No has configurado la API KEY en el código."
+
+        # Configuración del modelo con protocolo REST (más estable que gRPC)
         genai.configure(api_key=API_KEY, transport='rest')
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # OPTIMIZACIÓN DE IMAGEN: Convertimos a JPEG calidad 50% (Suficiente para texto)
+        # Reducción de peso de imagen (JPEG al 50% de calidad)
         buf = io.BytesIO()
         imagen_pil.save(buf, format='JPEG', quality=50)
         img_bytes = buf.getvalue()
         
         prompt_tecnico = f"""
-        CONTEXTO: Ingeniería de Petróleos - Well Planning.
-        TAREA: Extraer exactamente: {instruccion_especifica}.
-        REGLA: Responde solo con los datos. Si no los ves, di 'Dato no visible'.
+        Actúa como un experto en Well Planning de Ecopetrol.
+        Analiza este recorte técnico y extrae: {instruccion_especifica}.
+        REGLA: Responde solo con los datos técnicos encontrados.
         """
         
-        # ENVÍO CRUDO (Más rápido y compatible con Firewalls)
+        # Envío de contenido en formato 'inline_data' (binario puro)
         response = model.generate_content(
             contents=[
                 {
@@ -42,81 +50,106 @@ def skill_vision_well_plan(imagen_pil, instruccion_especifica):
                     ]
                 }
             ],
-            request_options={"timeout": 60} # Espera hasta 1 minuto
+            request_options={"timeout": 60} 
         )
         
         if response and response.text:
             return response.text
         else:
-            return "⚠️ La IA procesó la imagen pero la respuesta llegó vacía."
+            return "⚠️ La IA no detectó texto claro. Intenta con un recorte más nítido."
 
     except Exception as e:
-        error_str = str(e).lower()
-        if "deadline" in error_str or "timeout" in error_str:
-            return "⚠️ TIEMPO AGOTADO: La red en Rubiales está muy lenta. Intenta con un recorte más pequeño."
-        if "api_key" in error_str or "403" in error_str:
-            return "⚠️ ERROR DE LLAVE: Verifica que la API KEY sea correcta."
-        return f"⚠️ ERROR TÉCNICO: {str(e)}"
+        error_msg = str(e)
+        if "403" in error_msg or "API_KEY_INVALID" in error_msg:
+            return "⚠️ ERROR DE LLAVE: La API KEY es incorrecta o no tiene permisos."
+        if "429" in error_msg:
+            return "⚠️ LÍMITE ALCANZADO: Demasiadas peticiones. Espera un momento."
+        return f"⚠️ ERROR TÉCNICO: {error_msg}"
 
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
 # ==========================================
-st.set_page_config(page_title="Well Planning CLO", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - Operaciones", page_icon="🏗️", layout="wide")
 
+# Inicializar navegación
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "Home"
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
-    st.write(f"**Usuario:** {st.experimental_user.email if hasattr(st, 'experimental_user') else 'Ingeniero'}")
-    if st.button("🏠 Inicio"):
+    st.divider()
+    if st.button("🏠 Volver al Inicio", use_container_width=True):
         st.session_state.menu_actual = "Home"
         st.rerun()
 
-# Lógica de Navegación
+# --- LÓGICA DE NAVEGACIÓN ---
+
 if st.session_state.menu_actual == "Home":
-    st.title("🚧 Construcción Well Plan - Operaciones")
-    if st.button("⚙️ Ir a Mantenimiento BES", use_container_width=True):
-        st.session_state.menu_actual = "BES"
-        st.rerun()
-
-elif st.session_state.menu_actual == "BES":
-    st.title("⚙️ Módulo de Extracción BES")
+    st.title("🚧 Construcción Well Plan - Operaciones CUA")
+    st.subheader("Seleccione el módulo de trabajo:")
     
-    # Función de Interfaz para cada Pestaña
-    def ui_extractor(label, instruccion, key_id):
-        archivo = st.file_uploader(f"Cargar recorte: {label}", type=["jpg", "png", "jpeg"], key=f"up_{key_id}")
-        if archivo:
-            img = Image.open(archivo)
-            st.image(img, width=350, caption="Recorte para analizar")
-            
-            if st.button(f"🔍 Escanear {label}", key=f"btn_{key_id}"):
-                status = st.empty()
-                bar = st.progress(20)
-                
-                with st.spinner("Comunicando con Gemini..."):
-                    status.info("📡 Enviando paquete de datos optimizado...")
-                    resultado = skill_vision_well_plan(img, instruccion)
-                    
-                    bar.progress(100)
-                    status.success("✅ Proceso terminado")
-                    st.markdown(f"**Resultado:**\n{resultado}")
-
-    tabs = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta"])
-    
-    with tabs[0]:
-        ui_extractor("Sección B", "Tipo de Cabezal y Presión Nominal", "head")
-    with tabs[1]:
-        ui_extractor("Revestimiento", "OD, Peso y Grado del Casing", "liner")
-    with tabs[2]:
-        ui_extractor("BES", "Profundidad de la bomba y OD Tubing", "sarta")
-
-    # Formulario Manual (Persistente)
-    st.divider()
-    st.subheader("📝 Validación Manual")
     col1, col2 = st.columns(2)
     with col1:
-        st.text_input("Profundidad MD", placeholder="Ej: 3450 ft")
+        if st.button("🌑 1. Abandonos", use_container_width=True):
+            st.session_state.menu_actual = "Abandonos"
+            st.rerun()
+        if st.button("⚙️ 2. Mantenimiento BES", use_container_width=True):
+            st.session_state.menu_actual = "BES"
+            st.rerun()
     with col2:
-        st.selectbox("Tipo de Equipo", ["BES - Etapas estándar", "BES - Alto Volumen", "SLA"])
+        if st.button("📊 3. Rediseño SLA", use_container_width=True):
+            st.session_state.menu_actual = "SLA"
+            st.rerun()
+        if st.button("🛠️ 4. Workover", use_container_width=True):
+            st.session_state.menu_actual = "Workover"
+            st.rerun()
+
+elif st.session_state.menu_actual == "BES":
+    st.title("⚙️ Módulo de Extracción por Secciones (BES)")
+    st.info("💡 Pega o sube el recorte del Estado Mecánico (EM) en la pestaña correspondiente.")
+
+    # Función interna para procesar pestañas y evitar repetir código
+    def ejecutar_analisis_tab(label, instruccion, key_id):
+        archivo = st.file_uploader(f"Subir recorte de {label}", type=["jpg", "png", "jpeg"], key=f"f_{key_id}")
+        if archivo:
+            img = Image.open(archivo)
+            st.image(img, width=400, caption=f"Recorte: {label}")
+            
+            if st.button(f"🔍 Analizar {label}", key=f"b_{key_id}"):
+                status = st.empty()
+                progreso = st.progress(10)
+                
+                with st.spinner(f"Escaneando {label}..."):
+                    status.info("📡 Conectando con servidor de IA (Protocolo REST)...")
+                    progreso.progress(50)
+                    
+                    resultado = skill_vision_well_plan(img, instruccion)
+                    
+                    progreso.progress(100)
+                    status.success("✅ Análisis completado")
+                    st.markdown(f"### Datos Extraídos:\n{resultado}")
+
+    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
+
+    with tab1:
+        ejecutar_analisis_tab("Cabezal", "Sección B, Tubing Head y Presión Nominal", "head")
+    with tab2:
+        ejecutar_analisis_tab("Casing", "OD del Casing, Peso y Grado del acero", "liner")
+    with tab3:
+        ejecutar_analisis_tab("Sarta", "Profundidad bomba BES y OD Tubing", "sarta")
+
+    st.divider()
+    st.subheader("2. Verificación y Ajustes Manuales")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.number_input("Profundidad de asentamiento (ft MD)", value=3433)
+        st.selectbox("Diámetro de Tubing", ["3 1/2\"", "4 1/2\""])
+    with c2:
+        st.selectbox("Sección B", ["11\" 2K", "11\" 3K", "11\" 5K"])
+        st.checkbox("¿Cuenta con sensor de fondo?")
+
+# Módulos en desarrollo
+else:
+    st.title(f"Módulo {st.session_state.menu_actual}")
+    st.warning("Esta sección se encuentra actualmente en desarrollo técnico.")
