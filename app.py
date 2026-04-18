@@ -58,31 +58,28 @@ elif st.session_state.menu_actual == "BES":
     st.title("⚙️ Módulo de Extracción por Secciones (BES)")
     st.info("💡 **Tip:** Haz clic en el recuadro de carga y presiona **Ctrl + V** para pegar tu captura de pantalla.")
 
-    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
-
-    # Lógica para procesar y enviar imagen (reutilizable)
-   def procesar_extraccion(archivo, instruccion, key_btn):
+    # DEFINICIÓN DE LA FUNCIÓN CON INDENTACIÓN CORRECTA
+    def procesar_extraccion(archivo, instruccion, key_btn):
         if archivo:
             img = Image.open(archivo)
             img.thumbnail((800, 800))
             st.image(img, width=400, caption="Recorte detectado")
             
             if st.button(f"🔍 Ejecutar Escáner", key=key_btn):
-                # Usamos un contenedor vacío para actualizar mensajes de estado
                 status_container = st.empty()
-                progreso = st.progress(40)
+                progreso = st.progress(10)
                 
                 try:
-                    with st.spinner("Conectando con el servidor de IA..."):
-                        # Fase 1: Envío
-                        status_container.info("⏳ Enviando datos a la nube... (Paso 1/2)")
+                    with st.spinner("Procesando imagen..."):
+                        # Paso 1: Simulación de carga y envío
+                        status_container.info("⏳ Optimizando y enviando datos a la nube... (Paso 1/2)")
+                        progreso.progress(40)
+                        time.sleep(1) # Delay táctico para visualización
                         
-                        # Fase 2: Procesamiento (Aquí es donde se quedaba pegado)
-                        # Agregamos un pequeño delay visual para que veas el cambio de estado
-                        time.sleep(1) 
-                        status_container.warning("🤖 La IA está leyendo el Estado Mecánico... Esto puede tardar según el internet. (Paso 2/2)")
+                        # Paso 2: Llamada a la IA
+                        status_container.warning("🤖 La IA está interpretando el Estado Mecánico... (Paso 2/2)")
+                        progreso.progress(70)
                         
-                        # Llamada real a la IA
                         resultado = skill_vision_well_plan(img, instruccion)
                         
                         # Finalización
@@ -92,7 +89,8 @@ elif st.session_state.menu_actual == "BES":
                         
                 except Exception as e:
                     status_container.error(f"❌ Error de comunicación: {str(e)}")
-                    st.button("Reintentar conexión")
+
+    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
 
     with tab1:
         st.subheader("Información de Sección B / Cabezal")
@@ -119,7 +117,7 @@ elif st.session_state.menu_actual == "BES":
         st.selectbox("Sección B", ["11\" 2K", "11\" 3K", "11\" 5K"])
         st.checkbox("¿Cuenta con sensor de fondo?")
 
-# Espacios para otros módulos
+# Espacios para otros módulos alineados
 elif st.session_state.menu_actual == "Abandonos":
     st.title("🌑 Módulo de Abandonos")
     st.write("Contenido en desarrollo...")
