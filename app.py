@@ -1,23 +1,91 @@
 import streamlit as st
 
-st.set_page_config(page_title="Well Planning Tool", page_icon="🛢️")
+# 1. Configuración de página de alto nivel
+st.set_page_config(
+    page_title="Well Plan Pro - Operaciones CUA",
+    page_icon="🏗️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("🚀 Well Planning: Retiro de BES & Abandono")
-st.markdown("---")
+# Estilo personalizado para mejorar la estética
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f5f7f9;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 4em;
+        background-color: #004a99;
+        color: white;
+        font-weight: bold;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #005bc5;
+        border: 2px solid #ffffff;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Formulario inicial
-with st.container():
+# 2. Inicialización del estado de navegación
+if 'menu_actual' not in st.session_state:
+    st.session_state.menu_actual = "Home"
+
+# 3. Sidebar - Identidad Corporativa
+with st.sidebar:
+    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f3/Ecopetrol_logo.svg", width=150)
+    st.title("Panel de Control")
+    if st.button("🏠 Volver al Home"):
+        st.session_state.menu_actual = "Home"
+    st.markdown("---")
+    st.info("Ingeniero: Miguel Riaño\n\nCampo: Rubiales")
+
+# 4. Lógica de Navegación (Home)
+if st.session_state.menu_actual == "Home":
+    st.title("🚧 Construcción Well Plan - Operaciones CUA")
+    st.subheader("Seleccione el tipo de operación para iniciar el diseño técnico:")
+    
+    st.markdown("---")
+    
+    # Creación de cuadrícula de botones tipo Dashboard
     col1, col2 = st.columns(2)
+    
     with col1:
-        campo = st.text_input("Campo", "Rubiales")
-        pozo = st.text_input("Pozo", "RB-123")
+        if st.button("🌑 1. Abandonos"):
+            st.session_state.menu_actual = "Abandonos"
+            st.rerun()
+        
+        if st.button("⚙️ 2. Retiro y/o Mantenimiento BES"):
+            st.session_state.menu_actual = "BES"
+            st.rerun()
+
     with col2:
-        fecha = st.date_input("Fecha de Operación")
-        tipo = st.selectbox("Tipo de Operación", ["Retiro de BES", "Abandono Permanente", "Abandono Temporal"])
+        if st.button("📊 3. Rediseño SLA"):
+            st.session_state.menu_actual = "SLA"
+            st.rerun()
+            
+        if st.button("🛠️ 4. Workover"):
+            st.session_state.menu_actual = "Workover"
+            st.rerun()
 
-st.success(f"Configurando programa para el pozo {pozo} en el campo {campo}...")
+# 5. Vistas de cada Módulo
+elif st.session_state.menu_actual == "Abandonos":
+    st.title("🌑 Módulo de Abandonos")
+    st.write("Configuración de barreras, tapones de cemento y pruebas de integridad.")
+    # Aquí irá tu lógica de abandonos...
 
-# Espacio para el esquema del pozo (Handbook dinámico)
-st.sidebar.header("Menú de Ingeniería")
-if st.sidebar.button("Calcular Volumen de Control"):
-    st.sidebar.write("Capacidad de Casing: 0.0387 bbl/ft")
+elif st.session_state.menu_actual == "BES":
+    st.title("⚙️ Retiro y/o Mantenimiento BES")
+    st.write("Plan operativo para extracción de sistemas de bombeo electrosumergible.")
+    # Aquí irá tu lógica de BES...
+
+elif st.session_state.menu_actual == "SLA":
+    st.title("📊 Rediseño SLA")
+    st.write("Optimización de levantamiento artificial (Sucker Rod Pumping).")
+
+elif st.session_state.menu_actual == "Workover":
+    st.title("🛠️ Módulo de Workover")
+    st.write("Intervención mayor al pozo para reacondicionamiento.")
