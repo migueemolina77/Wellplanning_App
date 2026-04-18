@@ -8,38 +8,35 @@ import time
 # 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN
 # ==========================================
 
-# OPCIÓN A: Pegar la llave directamente (Para pruebas locales)
-API_KEY = "AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU" 
-
-# OPCIÓN B: Usar Secrets de Streamlit (Para cuando subas la app a la web)
-# API_KEY = st.secrets["GEMINI_KEY"]
+# Pegar aquí tu llave AIza...
+API_KEY = AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU 
 
 def skill_vision_well_plan(imagen_pil, instruccion_especifica):
     """
-    Versión optimizada para redes de campo (Rubiales/CUA).
-    Usa transporte REST y compresión agresiva.
+    Versión blindada contra Error 404 y optimizada para redes lentas.
     """
     try:
-        # Validar que la llave no esté vacía
         if API_KEY == "TU_API_KEY_AQUÍ" or not API_KEY:
-            return "⚠️ ERROR: No has configurado la API KEY en el código."
+            return "⚠️ ERROR: Configura la API KEY en la línea 12."
 
-        # Configuración del modelo con protocolo REST (más estable que gRPC)
+        # Configuración forzada para evitar conflictos de versión (v1beta vs v1)
         genai.configure(api_key=API_KEY, transport='rest')
-        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Reducción de peso de imagen (JPEG al 50% de calidad)
+        # Usamos la denominación 'gemini-1.5-flash' que es la versión estable
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+        
+        # Compresión de imagen para asegurar el paso por Firewalls industriales
         buf = io.BytesIO()
         imagen_pil.save(buf, format='JPEG', quality=50)
         img_bytes = buf.getvalue()
         
         prompt_tecnico = f"""
-        Actúa como un experto en Well Planning de Ecopetrol.
-        Analiza este recorte técnico y extrae: {instruccion_especifica}.
-        REGLA: Responde solo con los datos técnicos encontrados.
+        Actúa como un experto en ingeniería de subsuelo (Ecopetrol).
+        Extrae del recorte: {instruccion_especifica}.
+        Responde solo con datos. Si no hay datos, indica 'No detectado'.
         """
         
-        # Envío de contenido en formato 'inline_data' (binario puro)
+        # Envío mediante 'inline_data' para máxima compatibilidad REST
         response = model.generate_content(
             contents=[
                 {
@@ -56,22 +53,22 @@ def skill_vision_well_plan(imagen_pil, instruccion_especifica):
         if response and response.text:
             return response.text
         else:
-            return "⚠️ La IA no detectó texto claro. Intenta con un recorte más nítido."
+            return "⚠️ El servidor respondió pero el análisis quedó vacío."
 
     except Exception as e:
         error_msg = str(e)
-        if "403" in error_msg or "API_KEY_INVALID" in error_msg:
-            return "⚠️ ERROR DE LLAVE: La API KEY es incorrecta o no tiene permisos."
-        if "429" in error_msg:
-            return "⚠️ LÍMITE ALCANZADO: Demasiadas peticiones. Espera un momento."
+        # Manejo específico del error 404 visto anteriormente
+        if "404" in error_msg:
+            return "⚠️ ERROR 404: El modelo no fue encontrado. Intenta actualizar la librería con: pip install -U google-generativeai"
+        if "403" in error_msg:
+            return "⚠️ ERROR 403: La API KEY no tiene permisos o es inválida."
         return f"⚠️ ERROR TÉCNICO: {error_msg}"
 
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
 # ==========================================
-st.set_page_config(page_title="Well Planning - Operaciones", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - CUA", page_icon="🏗️", layout="wide")
 
-# Inicializar navegación
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "Home"
 
@@ -79,15 +76,15 @@ if 'menu_actual' not in st.session_state:
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
     st.divider()
-    if st.button("🏠 Volver al Inicio", use_container_width=True):
+    if st.button("🏠 Inicio"):
         st.session_state.menu_actual = "Home"
         st.rerun()
 
-# --- LÓGICA DE NAVEGACIÓN ---
+# --- NAVEGACIÓN ---
 
 if st.session_state.menu_actual == "Home":
     st.title("🚧 Construcción Well Plan - Operaciones CUA")
-    st.subheader("Seleccione el módulo de trabajo:")
+    st.info("Plataforma de extracción automática de datos para Estados Mecánicos.")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -106,50 +103,40 @@ if st.session_state.menu_actual == "Home":
             st.rerun()
 
 elif st.session_state.menu_actual == "BES":
-    st.title("⚙️ Módulo de Extracción por Secciones (BES)")
-    st.info("💡 Pega o sube el recorte del Estado Mecánico (EM) en la pestaña correspondiente.")
-
-    # Función interna para procesar pestañas y evitar repetir código
-    def ejecutar_analisis_tab(label, instruccion, key_id):
-        archivo = st.file_uploader(f"Subir recorte de {label}", type=["jpg", "png", "jpeg"], key=f"f_{key_id}")
-        if archivo:
-            img = Image.open(archivo)
-            st.image(img, width=400, caption=f"Recorte: {label}")
-            
-            if st.button(f"🔍 Analizar {label}", key=f"b_{key_id}"):
+    st.title("⚙️ Extracción Secciones BES")
+    
+    def ui_seccion(titulo, prompt_inst, k_id):
+        file = st.file_uploader(f"Recorte de {titulo}", type=["jpg", "png", "jpeg"], key=f"f_{k_id}")
+        if file:
+            img_pil = Image.open(file)
+            st.image(img_pil, width=350)
+            if st.button(f"🔍 Escanear {titulo}", key=f"b_{k_id}"):
                 status = st.empty()
-                progreso = st.progress(10)
-                
-                with st.spinner(f"Escaneando {label}..."):
-                    status.info("📡 Conectando con servidor de IA (Protocolo REST)...")
-                    progreso.progress(50)
-                    
-                    resultado = skill_vision_well_plan(img, instruccion)
-                    
-                    progreso.progress(100)
-                    status.success("✅ Análisis completado")
-                    st.markdown(f"### Datos Extraídos:\n{resultado}")
+                bar = st.progress(10)
+                with st.spinner("Analizando..."):
+                    status.info("📡 Conectando con Gemini via REST...")
+                    bar.progress(50)
+                    res = skill_vision_well_plan(img_pil, prompt_inst)
+                    bar.progress(100)
+                    status.success("Listo")
+                    st.success(f"**Datos:** {res}")
 
-    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
-
-    with tab1:
-        ejecutar_analisis_tab("Cabezal", "Sección B, Tubing Head y Presión Nominal", "head")
-    with tab2:
-        ejecutar_analisis_tab("Casing", "OD del Casing, Peso y Grado del acero", "liner")
-    with tab3:
-        ejecutar_analisis_tab("Sarta", "Profundidad bomba BES y OD Tubing", "sarta")
+    t1, t2, t3 = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta"])
+    with t1:
+        ui_seccion("Sección B", "Tipo de Tubing Head y PSI nominal", "head")
+    with t2:
+        ui_seccion("Revestimiento", "OD, Peso y Grado de Casing", "liner")
+    with t3:
+        ui_seccion("Sarta", "Profundidad bomba BES y Tubing", "sarta")
 
     st.divider()
-    st.subheader("2. Verificación y Ajustes Manuales")
+    st.subheader("📝 Carga Manual de Control")
     c1, c2 = st.columns(2)
     with c1:
-        st.number_input("Profundidad de asentamiento (ft MD)", value=3433)
-        st.selectbox("Diámetro de Tubing", ["3 1/2\"", "4 1/2\""])
+        st.number_input("Profundidad (ft)", value=3000)
     with c2:
-        st.selectbox("Sección B", ["11\" 2K", "11\" 3K", "11\" 5K"])
-        st.checkbox("¿Cuenta con sensor de fondo?")
+        st.selectbox("Sección B", ["11 2K", "11 3K", "11 5K"])
 
-# Módulos en desarrollo
 else:
     st.title(f"Módulo {st.session_state.menu_actual}")
-    st.warning("Esta sección se encuentra actualmente en desarrollo técnico.")
+    st.warning("Sección en construcción...")
