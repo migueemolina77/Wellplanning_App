@@ -36,15 +36,15 @@ if 'menu_actual' not in st.session_state:
 
 # 3. Sidebar - Identidad Corporativa (Actualizado)
 with st.sidebar:
-    # Sustitución del logo por texto y emoji
+  
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; font-weight: bold;'>Energía que Transforma</p>", unsafe_allow_html=True)
     
     st.title("Panel de Control")
-    if st.button("🏠 Volver al Home"):
+    if st.button("🏠 Home"):
         st.session_state.menu_actual = "Home"
     st.markdown("---")
-    st.info("Ingeniero: Miguel Riaño\n\nCampo: Rubiales")
+    st.info("Coordinación de Subsuelo")
 
 # 4. Lógica de Navegación (Home)
 if st.session_state.menu_actual == "Home":
