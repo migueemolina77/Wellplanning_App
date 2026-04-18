@@ -14,7 +14,7 @@ import time
 # 1. CONFIGURACIÓN DE SEGURIDAD
 # ==========================================
 # Asegúrate de mantener las COMILLAS
-API_KEY = "AIzaSyCseXPIRBYZtrTW6NdCpqIKm_5j3WHGldU" 
+API_KEY = "AIzaSyCOefR18ZH-muHc8dlvHHOqmkuCvfkHxDE" 
 
 def skill_vision_well_plan(imagen_pil, instruccion_especifica):
     try:
