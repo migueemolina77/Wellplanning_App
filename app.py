@@ -74,19 +74,38 @@ if st.session_state.menu_actual == "Home":
             st.rerun()
 
 elif st.session_state.menu_actual == "BES":
-    st.title("⚙️ Módulo de Retiro/Mantenimiento BES")
-    
-    # SECCIÓN 1: EXTRACCIÓN
-    st.header("1. Carga de Estado Mecánico")
-    subida = st.file_uploader("Adjunta el EM (JPG/PNG)", type=["jpg", "png", "jpeg"])
-    
-    if subida:
-        img = Image.open(subida)
-        st.image(img, caption="Estado Mecánico detectado", width=300)
-        if st.button("🔍 Ejecutar Skill de Visión"):
-            with st.spinner("Analizando con Gemini..."):
-                resultado = skill_vision_well_plan(img)
-                st.code(resultado)
+    st.title("⚙️ Módulo de Extracción por Secciones")
+    st.info("💡 Tip: Sube pantallazos específicos de cada área para mayor velocidad.")
+
+    # Creación de pestañas para organizar el flujo
+    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
+
+    with tab1:
+        st.subheader("Información de Sección B / Cabezal")
+        subida_head = st.file_uploader("Cargar zona de Cabezal", type=["jpg", "png", "jpeg"], key="head")
+        if subida_head:
+            if st.button("🔍 Extraer Cabezal"):
+                with st.spinner("Analizando..."):
+                    res = skill_vision_well_plan(Image.open(subida_head), "Extrae tipo de Sección B y presiones")
+                    st.success(res)
+
+    with tab2:
+        st.subheader("Información de Revestimiento")
+        subida_liner = st.file_uploader("Cargar zona de Liner/Casing", type=["jpg", "png", "jpeg"], key="liner")
+        if subida_liner:
+            if st.button("🔍 Extraer Liner"):
+                with st.spinner("Analizando..."):
+                    res = skill_vision_well_plan(Image.open(subida_liner), "Extrae OD Casing, Grado y Conexión")
+                    st.success(res)
+
+    with tab3:
+        st.subheader("Información de Sarta y BES")
+        subida_string = st.file_uploader("Cargar zona de Sarta/ESP", type=["jpg", "png", "jpeg"], key="string")
+        if subida_string:
+            if st.button("🔍 Extraer Sarta"):
+                with st.spinner("Analizando..."):
+                    res = skill_vision_well_plan(Image.open(subida_string), "Extrae OD Tubing y Profundidad ESP")
+                    st.success(res)
 
     st.markdown("---")
     
