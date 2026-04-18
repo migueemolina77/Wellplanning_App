@@ -36,12 +36,8 @@ if 'menu_actual' not in st.session_state:
 
 # 3. Sidebar - Identidad Corporativa
 with st.sidebar:
-    st.image("https://logodownload.org/wp-content/uploads/2018/10/ecopetrol-logo.png", width=150)
-    st.title("Panel de Control")
-    if st.button("🏠 Volver al Home"):
-        st.session_state.menu_actual = "Home"
-    st.markdown("---")
-    st.info("Ingeniero: Miguel Riaño\n\nCampo: Rubiales")
+    st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-weight: bold;'>Energía que Transforma</p>", unsafe_allow_html=True)
 
 # 4. Lógica de Navegación (Home)
 if st.session_state.menu_actual == "Home":
