@@ -2,7 +2,7 @@ import streamlit as st
 
 # 1. Configuración de página de alto nivel
 st.set_page_config(
-    page_title="Well Plan Pro - Operaciones CUA",
+    page_title="Well Planning - Operaciones CLO",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -36,7 +36,7 @@ if 'menu_actual' not in st.session_state:
 
 # 3. Sidebar - Identidad Corporativa
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f3/Ecopetrol_logo.svg", width=150)
+    st.image("https://logodownload.org/wp-content/uploads/2018/10/ecopetrol-logo.png", width=150)
     st.title("Panel de Control")
     if st.button("🏠 Volver al Home"):
         st.session_state.menu_actual = "Home"
