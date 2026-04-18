@@ -4,65 +4,54 @@ from PIL import Image
 import io
 import time
 
-# ==========================================
-# 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN
-# ==========================================
+import streamlit as st
+import google.generativeai as genai
+from PIL import Image
+import io
+import time
 
-# Pegar aquí tu llave AIza...
-API_KEY = "AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU"
+# ==========================================
+# 1. CONFIGURACIÓN DE SEGURIDAD
+# ==========================================
+# Asegúrate de mantener las COMILLAS
+API_KEY = "AIzaSyCseXPIRBYZtrTW6NdCpqIKm_5j3WHGldU" 
 
 def skill_vision_well_plan(imagen_pil, instruccion_especifica):
-    """
-    Versión blindada contra Error 404 y optimizada para redes lentas.
-    """
     try:
-        if API_KEY == "TU_API_KEY_AQUÍ" or not API_KEY:
-            return "⚠️ ERROR: Configura la API KEY en la línea 12."
-
-        # Configuración forzada para evitar conflictos de versión (v1beta vs v1)
+        # Forzamos la configuración con transporte REST
         genai.configure(api_key=API_KEY, transport='rest')
         
-        # Usamos la denominación 'gemini-1.5-flash' que es la versión estable
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+        # CAMBIO CLAVE: Probamos con el nombre técnico completo para evitar el 404
+        model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
         
-        # Compresión de imagen para asegurar el paso por Firewalls industriales
+        # Compresión para asegurar que pase por la red de Rubiales
         buf = io.BytesIO()
-        imagen_pil.save(buf, format='JPEG', quality=50)
+        imagen_pil.save(buf, format='JPEG', quality=40)
         img_bytes = buf.getvalue()
         
-        prompt_tecnico = f"""
-        Actúa como un experto en ingeniería de subsuelo (Ecopetrol).
-        Extrae del recorte: {instruccion_especifica}.
-        Responde solo con datos. Si no hay datos, indica 'No detectado'.
-        """
+        prompt_tecnico = f"Analiza este Estado Mecánico y extrae: {instruccion_especifica}. Solo datos técnicos."
         
-        # Envío mediante 'inline_data' para máxima compatibilidad REST
+        # Envío simplificado
         response = model.generate_content(
             contents=[
-                {
-                    "role": "user", 
-                    "parts": [
-                        {"inline_data": {"mime_type": "image/jpeg", "data": img_bytes}},
-                        {"text": prompt_tecnico}
-                    ]
-                }
-            ],
-            request_options={"timeout": 60} 
+                {"parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": img_bytes}},
+                    {"text": prompt_tecnico}
+                ]}
+            ]
         )
         
-        if response and response.text:
+        if response.text:
             return response.text
         else:
-            return "⚠️ El servidor respondió pero el análisis quedó vacío."
+            return "No se detectó información clara."
 
     except Exception as e:
         error_msg = str(e)
-        # Manejo específico del error 404 visto anteriormente
         if "404" in error_msg:
-            return "⚠️ ERROR 404: El modelo no fue encontrado. Intenta actualizar la librería con: pip install -U google-generativeai"
-        if "403" in error_msg:
-            return "⚠️ ERROR 403: La API KEY no tiene permisos o es inválida."
-        return f"⚠️ ERROR TÉCNICO: {error_msg}"
+            # Si el anterior falla, intentamos con la versión pro que a veces tiene rutas más estables
+            return "⚠️ Error 404 persistente. Por favor, actualiza la librería o intenta con un recorte más pequeño."
+        return f"⚠️ Error: {error_msg}"
 
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
