@@ -8,7 +8,7 @@ import time
 # 1. CONFIGURACIÓN DE ACCESO
 # ==========================================
 # RECOMENDACIÓN: Genera una llave nueva, la anterior ya expiró por seguridad.
-API_KEY = "AIzaSyCseXPIRBYZtrTW6NdCpqIKm_5j3WHGldU" 
+API_KEY = "AIzaSyClGFm_2nBWYGPJQ9YD1_249NHmnKAVUbA" 
 
 def skill_vision_well_plan(imagen_pil, instruccion):
     try:
