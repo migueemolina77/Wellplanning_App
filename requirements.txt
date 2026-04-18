@@ -4,3 +4,4 @@ PyPDF2
 openpyxl
 google-generativeai
 Pillow
+google-generativeai>=0.8.0
