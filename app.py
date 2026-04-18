@@ -9,7 +9,7 @@ import time
 # ==========================================
 
 # OPCIÓN A: Pegar la llave directamente (Para pruebas locales)
-API_KEY = "TU_API_KEY_AQUÍ" 
+API_KEY = "AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU" 
 
 # OPCIÓN B: Usar Secrets de Streamlit (Para cuando subas la app a la web)
 # API_KEY = st.secrets["GEMINI_KEY"]
