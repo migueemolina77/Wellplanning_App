@@ -9,7 +9,7 @@ import time
 # ==========================================
 
 # Pegar aquí tu llave AIza...
-API_KEY = AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU 
+API_KEY = "AIzaSyCseXPIrBYZtrTW6NdCpqIKm_5j3WHG1dU"
 
 def skill_vision_well_plan(imagen_pil, instruccion_especifica):
     """
