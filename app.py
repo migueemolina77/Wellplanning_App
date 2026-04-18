@@ -4,152 +4,119 @@ from PIL import Image
 import io
 import time
 
-def skill_vision_well_plan(imagen_em, instruccion_especifica):
-    # Forzamos la configuración de seguridad para evitar bloqueos de red
-    genai.configure(transport='rest') # Usamos REST en lugar de gRPC (más estable en redes lentas)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    # Optimizamos la imagen a Blanco y Negro internamente para reducir peso un 70% más
-    img_bw = imagen_em.convert('L') 
-    
-    prompt_turbo = f"""
-    CONTEXTO: Operaciones Rubiales, Ecopetrol.
-    TAREA: Extraer {instruccion_especifica}.
-    REGLA: Solo entrega los datos técnicos. Sin saludos ni prosa.
+# ==========================================
+# 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN
+# ==========================================
+# Reemplaza 'TU_API_KEY' con tu clave real
+API_KEY = "TU_API_KEY_AQUI" 
+
+def skill_vision_well_plan(imagen_pil, instruccion_especifica):
     """
-    
+    Versión 'Field-Ready': Convierte imagen a bytes ultra-ligeros 
+    y usa transporte REST para redes inestables.
+    """
     try:
-        # Añadimos un timeout forzado para que no se quede colgado
-        response = model.generate_content(
-            [prompt_turbo, img_bw],
-            request_options={"timeout": 40} # Si en 40s no responde, lanza error
-        )
-        return response.text
-    except Exception as e:
-        return f"⚠️ Error de Red en Campo: El servidor tardó demasiado. Reintenta con un recorte más pequeño."
+        # Configuración forzada en cada llamada para evitar desconexiones
+        genai.configure(api_key=API_KEY, transport='rest')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-# 1. Función de IA Optimizada
-def skill_vision_well_plan(imagen_em, instruccion_especifica):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    prompt_turbo = f"""
-    Actúa como un experto en Well Planning de Ecopetrol. 
-    Analiza este recorte de un Estado Mecánico y extrae: {instruccion_especifica}.
-    Respuesta corta, técnica y directa. Si no lo ves, di 'No detectado'.
-    """
-    try:
-        response = model.generate_content([prompt_turbo, imagen_em])
-        return response.text
+        # OPTIMIZACIÓN DE IMAGEN: Convertimos a JPEG calidad 50% (Suficiente para texto)
+        buf = io.BytesIO()
+        imagen_pil.save(buf, format='JPEG', quality=50)
+        img_bytes = buf.getvalue()
+        
+        prompt_tecnico = f"""
+        CONTEXTO: Ingeniería de Petróleos - Well Planning.
+        TAREA: Extraer exactamente: {instruccion_especifica}.
+        REGLA: Responde solo con los datos. Si no los ves, di 'Dato no visible'.
+        """
+        
+        # ENVÍO CRUDO (Más rápido y compatible con Firewalls)
+        response = model.generate_content(
+            contents=[
+                {
+                    "role": "user", 
+                    "parts": [
+                        {"inline_data": {"mime_type": "image/jpeg", "data": img_bytes}},
+                        {"text": prompt_tecnico}
+                    ]
+                }
+            ],
+            request_options={"timeout": 60} # Espera hasta 1 minuto
+        )
+        
+        if response and response.text:
+            return response.text
+        else:
+            return "⚠️ La IA procesó la imagen pero la respuesta llegó vacía."
+
     except Exception as e:
-        return f"Error de conexión: {str(e)}"
+        error_str = str(e).lower()
+        if "deadline" in error_str or "timeout" in error_str:
+            return "⚠️ TIEMPO AGOTADO: La red en Rubiales está muy lenta. Intenta con un recorte más pequeño."
+        if "api_key" in error_str or "403" in error_str:
+            return "⚠️ ERROR DE LLAVE: Verifica que la API KEY sea correcta."
+        return f"⚠️ ERROR TÉCNICO: {str(e)}"
 
-# 2. Configuración de página
-st.set_page_config(page_title="Well Planning - Operaciones", page_icon="🏗️", layout="wide")
+# ==========================================
+# 2. INTERFAZ DE USUARIO (STREAMLIT)
+# ==========================================
+st.set_page_config(page_title="Well Planning CLO", page_icon="🏗️", layout="wide")
 
-# 3. Inicialización del estado del menú
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "Home"
 
-# 4. Sidebar con Logo
+# Sidebar
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
-    st.markdown("---")
-    if st.button("🏠 Volver al Home", use_container_width=True):
+    st.write(f"**Usuario:** {st.experimental_user.email if hasattr(st, 'experimental_user') else 'Ingeniero'}")
+    if st.button("🏠 Inicio"):
         st.session_state.menu_actual = "Home"
         st.rerun()
 
-# 5. Lógica de Navegación Principal
+# Lógica de Navegación
 if st.session_state.menu_actual == "Home":
-    st.title("🚧 Construcción Well Plan - Operaciones CUA")
-    st.subheader("Seleccione el tipo de operación para iniciar:")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🌑 1. Abandonos", use_container_width=True):
-            st.session_state.menu_actual = "Abandonos"
-            st.rerun()
-        if st.button("⚙️ 2. Retiro y/o Mantenimiento BES", use_container_width=True):
-            st.session_state.menu_actual = "BES"
-            st.rerun()
-    with col2:
-        if st.button("📊 3. Rediseño SLA", use_container_width=True):
-            st.session_state.menu_actual = "SLA"
-            st.rerun()
-        if st.button("🛠️ 4. Workover", use_container_width=True):
-            st.session_state.menu_actual = "Workover"
-            st.rerun()
+    st.title("🚧 Construcción Well Plan - Operaciones")
+    if st.button("⚙️ Ir a Mantenimiento BES", use_container_width=True):
+        st.session_state.menu_actual = "BES"
+        st.rerun()
 
 elif st.session_state.menu_actual == "BES":
-    st.title("⚙️ Módulo de Extracción por Secciones (BES)")
-    st.info("💡 **Tip:** Haz clic en el recuadro de carga y presiona **Ctrl + V** para pegar tu captura de pantalla.")
-
-    # DEFINICIÓN DE LA FUNCIÓN CON INDENTACIÓN CORRECTA
-    def procesar_extraccion(archivo, instruccion, key_btn):
+    st.title("⚙️ Módulo de Extracción BES")
+    
+    # Función de Interfaz para cada Pestaña
+    def ui_extractor(label, instruccion, key_id):
+        archivo = st.file_uploader(f"Cargar recorte: {label}", type=["jpg", "png", "jpeg"], key=f"up_{key_id}")
         if archivo:
             img = Image.open(archivo)
-            img.thumbnail((800, 800))
-            st.image(img, width=400, caption="Recorte detectado")
+            st.image(img, width=350, caption="Recorte para analizar")
             
-            if st.button(f"🔍 Ejecutar Escáner", key=key_btn):
-                status_container = st.empty()
-                progreso = st.progress(10)
+            if st.button(f"🔍 Escanear {label}", key=f"btn_{key_id}"):
+                status = st.empty()
+                bar = st.progress(20)
                 
-                try:
-                    with st.spinner("Procesando imagen..."):
-                        # Paso 1: Simulación de carga y envío
-                        status_container.info("⏳ Optimizando y enviando datos a la nube... (Paso 1/2)")
-                        progreso.progress(40)
-                        time.sleep(1) # Delay táctico para visualización
-                        
-                        # Paso 2: Llamada a la IA
-                        status_container.warning("🤖 La IA está interpretando el Estado Mecánico... (Paso 2/2)")
-                        progreso.progress(70)
-                        
-                        resultado = skill_vision_well_plan(img, instruccion)
-                        
-                        # Finalización
-                        progreso.progress(100)
-                        status_container.success("✅ ¡Datos recibidos con éxito!")
-                        st.markdown(f"### Resultado Extraído:\n{resultado}")
-                        
-                except Exception as e:
-                    status_container.error(f"❌ Error de comunicación: {str(e)}")
+                with st.spinner("Comunicando con Gemini..."):
+                    status.info("📡 Enviando paquete de datos optimizado...")
+                    resultado = skill_vision_well_plan(img, instruccion)
+                    
+                    bar.progress(100)
+                    status.success("✅ Proceso terminado")
+                    st.markdown(f"**Resultado:**\n{resultado}")
 
-    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal (BOP)", "🕳️ Liner / Casing", "🔌 Sarta / BES"])
+    tabs = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta"])
+    
+    with tabs[0]:
+        ui_extractor("Sección B", "Tipo de Cabezal y Presión Nominal", "head")
+    with tabs[1]:
+        ui_extractor("Revestimiento", "OD, Peso y Grado del Casing", "liner")
+    with tabs[2]:
+        ui_extractor("BES", "Profundidad de la bomba y OD Tubing", "sarta")
 
-    with tab1:
-        st.subheader("Información de Sección B / Cabezal")
-        file_head = st.file_uploader("Pega/Sube recorte del Cabezal", type=["jpg", "png", "jpeg"], key="u_head")
-        procesar_extraccion(file_head, "Tipo de Sección B (Tubing Head) y Presión Nominal (psi)", "btn_head")
-
-    with tab2:
-        st.subheader("Información de Revestimiento")
-        file_liner = st.file_uploader("Pega/Sube recorte del Liner/Casing", type=["jpg", "png", "jpeg"], key="u_liner")
-        procesar_extraccion(file_liner, "OD del Casing, Peso (lb/ft) y Grado del acero", "btn_liner")
-
-    with tab3:
-        st.subheader("Información de Sarta y Equipo BES")
-        file_string = st.file_uploader("Pega/Sube recorte de la Sarta", type=["jpg", "png", "jpeg"], key="u_string")
-        procesar_extraccion(file_string, "OD del Tubing, profundidad de la bomba BES (ft) y número de etapas si aplica", "btn_string")
-
-    st.markdown("---")
-    st.subheader("2. Verificación Manual")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.number_input("Profundidad de asentamiento (ft MD)", value=3433)
-        st.selectbox("Diámetro de Tubing", ["3 1/2\"", "4 1/2\""])
-    with c2:
-        st.selectbox("Sección B", ["11\" 2K", "11\" 3K", "11\" 5K"])
-        st.checkbox("¿Cuenta con sensor de fondo?")
-
-# Espacios para otros módulos alineados
-elif st.session_state.menu_actual == "Abandonos":
-    st.title("🌑 Módulo de Abandonos")
-    st.write("Contenido en desarrollo...")
-
-elif st.session_state.menu_actual == "SLA":
-    st.title("📊 Rediseño SLA")
-    st.write("Contenido en desarrollo...")
-
-elif st.session_state.menu_actual == "Workover":
-    st.title("🛠️ Módulo de Workover")
-    st.write("Contenido en desarrollo...")
+    # Formulario Manual (Persistente)
+    st.divider()
+    st.subheader("📝 Validación Manual")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.text_input("Profundidad MD", placeholder="Ej: 3450 ft")
+    with col2:
+        st.selectbox("Tipo de Equipo", ["BES - Etapas estándar", "BES - Alto Volumen", "SLA"])
