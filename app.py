@@ -4,18 +4,21 @@ from PIL import Image
 
 # 1. Función de IA Corregida (Ahora acepta el prompt dinámico)
 def skill_vision_well_plan(imagen_em, instruccion_especifica):
+    # Usamos flash-lite o configuraciones de bajo consumo de tokens para velocidad
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    prompt_base = f"""
-    Analiza este recorte de un Estado Mecánico de un pozo petrolero.
-    Tu objetivo es: {instruccion_especifica}
-    
-    Responde directamente con los datos encontrados. 
-    Si no encuentras un dato, pon 'No detectado'.
+    # Prompt optimizado para velocidad: Le pedimos solo el dato, sin explicaciones
+    prompt_turbo = f"""
+    Actúa como un experto en Well Planning de Rubiales. 
+    Analiza este recorte y extrae únicamente: {instruccion_especifica}.
+    Respuesta corta y directa. Si no lo ves, di 'No detectado'.
     """
     
-    response = model.generate_content([prompt_base, imagen_em])
-    return response.text
+    try:
+        response = model.generate_content([prompt_turbo, imagen_em])
+        return response.text
+    except Exception as e:
+        return f"Error de conexión: {str(e)}"
 
 # 2. Configuración de página
 st.set_page_config(
