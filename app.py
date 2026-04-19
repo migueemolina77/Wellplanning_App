@@ -1,53 +1,36 @@
 import streamlit as st
-import google.generativeai as genai
+import easyocr
 from PIL import Image
+import numpy as np
 import io
 
 # ==========================================
-# 1. CONFIGURACIÓN DE ACCESO
+# 1. MOTOR DE EXTRACCIÓN LOCAL (EasyOCR)
 # ==========================================
-API_KEY = "AIzaSyAeGSLMzgyWohox06qXtJR7fFbUyMjeZA0"
 
-def skill_vision_well_plan(imagen_pil, instruccion):
+@st.cache_resource
+def load_ocr_model():
+    # Cargamos el modelo en memoria una sola vez (Español e Inglés)
+    return easyocr.Reader(['es', 'en'], gpu=False)
+
+def skill_extract_text_local(imagen_pil):
     try:
-        # Limpieza de la llave y configuración
-        genai.configure(api_key=API_KEY.strip())
+        reader = load_ocr_model()
         
-        # Selección del modelo estable
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Convertir imagen PIL a formato compatible (numpy array)
+        img_array = np.array(imagen_pil.convert('RGB'))
         
-        # Optimización de imagen para red de campo (Calidad 40%)
-        buf = io.BytesIO()
-        imagen_pil.save(buf, format='JPEG', quality=40)
-        img_bytes = buf.getvalue()
+        # Leer texto de la imagen
+        results = reader.readtext(img_array, detail=0)
         
-        # Estructura de mensaje simplificada (Formato Gemini 1.5)
-        prompt_tecnico = f"Actúa como experto en Well Planning. Extrae: {instruccion}. Solo datos técnicos."
-        
-        contenido = [
-            prompt_tecnico,
-            {"mime_type": "image/jpeg", "data": img_bytes}
-        ]
-        
-        response = model.generate_content(contenido)
-        
-        if response.text:
-            return response.text
+        if results:
+            # Unimos los textos encontrados con saltos de línea
+            return "\n".join(results)
         else:
-            return "⚠️ La IA no devolvió texto. Intenta con un recorte más nítido."
-
+            return "⚠️ No se detectó texto en el recorte. Intenta con una imagen más clara."
+            
     except Exception as e:
-        error_msg = str(e)
-        # Importamos la librería aquí para diagnosticar la versión en el mensaje de error
-        import google.generativeai as gai
-        version_actual = gai.__version__
-        
-        if "404" in error_msg:
-            return f"❌ ERROR 404: El modelo no existe en esta versión ({version_actual}). Por favor, haz 'Reboot' en Streamlit Cloud."
-        if "400" in error_msg:
-            return f"❌ ERROR 400: API Key inválida o mal copiada. (Versión detectada: {version_actual})"
-        
-        return f"⚠️ Error Técnico: {error_msg} | v.{version_actual}"
+        return f"❌ Error en el motor local: {str(e)}"
 
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
@@ -61,6 +44,7 @@ if 'menu' not in st.session_state:
 # Sidebar
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
+    st.info("Modo: Procesamiento Local (Sin API)")
     st.divider()
     if st.button("🏠 Inicio", use_container_width=True):
         st.session_state.menu = "Home"
@@ -69,7 +53,7 @@ with st.sidebar:
 # --- Pantalla Principal ---
 if st.session_state.menu == "Home":
     st.title("🚧 Construcción Well Plan - Operaciones CUA")
-    st.info("Plataforma de extracción automática de datos de subsuelo.")
+    st.info("Extracción de datos de subsuelo mediante OCR local.")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -100,10 +84,11 @@ elif st.session_state.menu == "BES":
             img = Image.open(archivo)
             st.image(img, width=400, caption="Recorte seleccionado")
             if st.button("🔍 Escanear Cabezal"):
-                with st.status("Procesando con Gemini 1.5 Flash...") as s:
-                    resultado = skill_vision_well_plan(img, "Tipo de Cabezal, Serie y Presión Nominal")
-                    s.update(label="Análisis finalizado", state="complete")
-                st.success(f"**Datos Extraídos:**\n{resultado}")
+                with st.status("Analizando imagen localmente...") as s:
+                    resultado = skill_extract_text_local(img)
+                    s.update(label="Escaneo completado", state="complete")
+                st.success("**Texto detectado en Cabezal:**")
+                st.code(resultado)
 
     with tab2:
         st.subheader("Análisis de Revestimiento")
@@ -112,9 +97,10 @@ elif st.session_state.menu == "BES":
             img2 = Image.open(archivo2)
             st.image(img2, width=400)
             if st.button("🔍 Escanear Liner"):
-                with st.spinner("Analizando..."):
-                    resultado = skill_vision_well_plan(img2, "Diámetro (OD), Peso y Grado del Casing")
-                    st.info(f"**Datos Extraídos:**\n{resultado}")
+                with st.spinner("Leyendo datos..."):
+                    resultado = skill_extract_text_local(img2)
+                    st.info("**Datos de Liner detectados:**")
+                    st.code(resultado)
 
     with tab3:
         st.subheader("Análisis de Sarta y Bomba")
@@ -123,9 +109,10 @@ elif st.session_state.menu == "BES":
             img3 = Image.open(archivo3)
             st.image(img3, width=400)
             if st.button("🔍 Escanear Sarta"):
-                with st.spinner("Analizando..."):
-                    resultado = skill_vision_well_plan(img3, "Profundidad de la bomba BES y OD del Tubing")
-                    st.info(f"**Datos Extraídos:**\n{resultado}")
+                with st.spinner("Procesando..."):
+                    resultado = skill_extract_text_local(img3)
+                    st.info("**Datos de Sarta detectados:**")
+                    st.code(resultado)
 
 else:
     st.title(f"Módulo {st.session_state.menu}")
