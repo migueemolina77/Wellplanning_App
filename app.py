@@ -3,6 +3,7 @@ import easyocr
 from PIL import Image
 import numpy as np
 import io
+from streamlit_paste_button import paste_image_button
 
 # ==========================================
 # 1. MOTOR DE EXTRACCIÓN LOCAL (EasyOCR)
@@ -16,15 +17,12 @@ def load_ocr_model():
 def skill_extract_text_local(imagen_pil):
     try:
         reader = load_ocr_model()
-        
         # Convertir imagen PIL a formato compatible (numpy array)
         img_array = np.array(imagen_pil.convert('RGB'))
-        
         # Leer texto de la imagen
         results = reader.readtext(img_array, detail=0)
         
         if results:
-            # Unimos los textos encontrados con saltos de línea
             return "\n".join(results)
         else:
             return "⚠️ No se detectó texto en el recorte. Intenta con una imagen más clara."
@@ -35,7 +33,7 @@ def skill_extract_text_local(imagen_pil):
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
 # ==========================================
-st.set_page_config(page_title="Well Planning - Operaciones CLO", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - Operaciones CUA", page_icon="🏗️", layout="wide")
 
 # Gestión de navegación
 if 'menu' not in st.session_state:
@@ -44,7 +42,7 @@ if 'menu' not in st.session_state:
 # Sidebar
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #2E7D32;'>ECOPETROL 🦎</h1>", unsafe_allow_html=True)
-    st.info("Modo: Procesamiento Local (Sin API)")
+    st.info("Modo: Procesamiento Local + Smart Paste")
     st.divider()
     if st.button("🏠 Inicio", use_container_width=True):
         st.session_state.menu = "Home"
@@ -53,7 +51,7 @@ with st.sidebar:
 # --- Pantalla Principal ---
 if st.session_state.menu == "Home":
     st.title("🚧 Construcción Well Plan - Operaciones CUA")
-    st.info("Extracción de datos de subsuelo mediante OCR local.")
+    st.info("Extracción de datos de subsuelo mediante OCR local y soporte de portapapeles.")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -77,42 +75,40 @@ elif st.session_state.menu == "BES":
     
     tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta"])
     
+    # --- Lógica común para procesar imágenes ---
+    def procesar_captura(label_id, key_suffix):
+        col_u, col_p = st.columns(2)
+        img_to_process = None
+        
+        with col_u:
+            archivo = st.file_uploader(f"Cargar {label_id}", type=["jpg", "png", "jpeg"], key=f"u_{key_suffix}")
+            if archivo: img_to_process = Image.open(archivo)
+            
+        with col_p:
+            st.write(f"O pega el recorte de {label_id}:")
+            pasted = paste_image_button(label=f"📋 Clic y Ctrl+V ({label_id})", key=f"p_{key_suffix}")
+            if pasted.image_data: img_to_process = pasted.image_data
+
+        if img_to_process:
+            st.image(img_to_process, width=400, caption="Imagen cargada/pegada")
+            if st.button(f"🔍 Escanear {label_id}", key=f"b_{key_suffix}"):
+                with st.status("Analizando localmente...") as s:
+                    resultado = skill_extract_text_local(img_to_process)
+                    s.update(label="Escaneo completado", state="complete")
+                st.success(f"**Resultado {label_id}:**")
+                st.code(resultado)
+
     with tab1:
         st.subheader("Análisis de Cabezal (Sección B)")
-        archivo = st.file_uploader("Cargar recorte de Cabezal", type=["jpg", "png", "jpeg"], key="u_head")
-        if archivo:
-            img = Image.open(archivo)
-            st.image(img, width=400, caption="Recorte seleccionado")
-            if st.button("🔍 Escanear Cabezal"):
-                with st.status("Analizando imagen localmente...") as s:
-                    resultado = skill_extract_text_local(img)
-                    s.update(label="Escaneo completado", state="complete")
-                st.success("**Texto detectado en Cabezal:**")
-                st.code(resultado)
+        procesar_captura("Cabezal", "head")
 
     with tab2:
         st.subheader("Análisis de Revestimiento")
-        archivo2 = st.file_uploader("Cargar recorte de Liner/Casing", type=["jpg", "png", "jpeg"], key="u_liner")
-        if archivo2:
-            img2 = Image.open(archivo2)
-            st.image(img2, width=400)
-            if st.button("🔍 Escanear Liner"):
-                with st.spinner("Leyendo datos..."):
-                    resultado = skill_extract_text_local(img2)
-                    st.info("**Datos de Liner detectados:**")
-                    st.code(resultado)
+        procesar_captura("Liner/Casing", "liner")
 
     with tab3:
         st.subheader("Análisis de Sarta y Bomba")
-        archivo3 = st.file_uploader("Cargar recorte de Sarta", type=["jpg", "png", "jpeg"], key="u_sarta")
-        if archivo3:
-            img3 = Image.open(archivo3)
-            st.image(img3, width=400)
-            if st.button("🔍 Escanear Sarta"):
-                with st.spinner("Procesando..."):
-                    resultado = skill_extract_text_local(img3)
-                    st.info("**Datos de Sarta detectados:**")
-                    st.code(resultado)
+        procesar_captura("Sarta", "sarta")
 
 else:
     st.title(f"Módulo {st.session_state.menu}")
