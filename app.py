@@ -114,7 +114,7 @@ def skill_extract_tabular_data(imagen_pil):
 # ==========================================
 # 2. INTERFAZ Y NAVEGACIÓN
 # ==========================================
-st.set_page_config(page_title="Well Planning CUA", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning CLO", page_icon="🏗️", layout="wide")
 
 if 'menu' not in st.session_state:
     st.session_state.menu = "Home"
