@@ -8,7 +8,7 @@ import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE EXTRACCIÓN CON ZONIFICACIÓN X
+# 1. MOTOR DE EXTRACCIÓN CON ZONIFICACIÓN ADAPTATIVA
 # ==========================================
 
 @st.cache_resource
@@ -29,11 +29,10 @@ def skill_extract_tabular_data(imagen_pil):
 
         # --- Lógica de Agrupamiento por Filas (Eje Y) ---
         filas_dict = {}
-        tolerancia_y = 12  # Sensibilidad para agrupar texto en la misma línea
+        tolerancia_y = 14  # Ajustado para capturar mejor filas levemente inclinadas
 
         for res in results:
             box, texto, conf = res
-            # Calculamos el centro geométrico del bloque de texto
             centro_y = (box[0][1] + box[2][1]) / 2
             centro_x = (box[0][0] + box[1][0]) / 2
             
@@ -48,44 +47,45 @@ def skill_extract_tabular_data(imagen_pil):
 
         datos_tabla = []
         
-        # Procesamos cada fila detectada de arriba hacia abajo
         for y in sorted(filas_dict.keys()):
-            # Ordenamos los elementos de la fila de izquierda a derecha
             elementos = sorted(filas_dict[y], key=lambda x: x[0])
             
-            # --- Clasificación por Zonas (Eje X) ---
-            # Basado en la estructura estándar de reportes de Ecopetrol
-            col_long = []
-            col_od = []
-            col_desc = []
-            col_top = []
-            col_base = []
+            c_long, c_od, c_desc, c_top, c_base = [], [], [], [], []
 
             for x, txt in elementos:
                 pct_x = x / ancho_total
                 
-                if pct_x < 0.09:        # Zona Izquierda: Long(ft)
-                    col_long.append(txt)
-                elif pct_x < 0.16:      # Zona: OD(in)
-                    col_od.append(txt)
-                elif pct_x < 0.78:      # Zona Central: Descripción
-                    col_desc.append(txt)
-                elif pct_x < 0.89:      # Zona: MD Top
-                    col_top.append(txt)
-                else:                   # Zona Derecha: MD Base
-                    col_base.append(txt)
+                # --- Clasificación Quirúrgica por Eje X ---
+                if pct_x < 0.08:        # Zona: Long(ft)
+                    c_long.append(txt)
+                elif 0.08 <= pct_x < 0.14: # Zona: OD(in)
+                    # Si detectamos texto puro (como "TUBING"), lo movemos a descripción
+                    if any(char.isdigit() for char in txt): c_od.append(txt)
+                    else: c_desc.append(txt)
+                elif 0.14 <= pct_x < 0.72: # Zona: Descripción del Componente
+                    c_desc.append(txt)
+                elif 0.72 <= pct_x < 0.86: # Zona: MD Top
+                    c_top.append(txt)
+                else:                   # Zona: Base MD
+                    c_base.append(txt)
 
-            # Limpiamos y unimos los fragmentos
-            desc_final = " ".join(col_desc).strip()
+            desc_raw = " ".join(c_desc).strip()
             
-            # Filtro: Ignorar filas vacías o que sean solo encabezados
-            if desc_final and not any(palabra in desc_final for palabra in ["Descripción", "Componente", "PROD"]):
+            # Filtro de Calidad: Ignorar encabezados y ruido corto
+            if len(desc_raw) > 3 and not any(p in desc_raw for p in ["Descripción", "Componente", "PROD", "Long"]):
+                
+                # Función interna para limpiar basura de las columnas numéricas
+                def clean_numeric_cell(lista):
+                    raw = "".join(lista).replace(" ", "")
+                    # Mantiene solo números, puntos y comas
+                    return re.sub(r'[^0-9.,-]', '', raw)
+
                 linea_data = {
-                    "Long(ft)": " ".join(col_long).strip(),
-                    "OD(in)": " ".join(col_od).strip(),
-                    "Descripción del Componente": desc_final,
-                    "MD Top(ft)": " ".join(col_top).strip(),
-                    "Base MD(ft)": " ".join(col_base).strip()
+                    "Long(ft)": clean_numeric_cell(c_long),
+                    "OD(in)": clean_numeric_cell(c_od),
+                    "Descripción del Componente": desc_raw,
+                    "MD Top(ft)": clean_numeric_cell(c_top),
+                    "Base MD(ft)": clean_numeric_cell(c_base)
                 }
                 datos_tabla.append(linea_data)
 
