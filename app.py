@@ -1,53 +1,70 @@
 import streamlit as st
 import pandas as pd
-from io import StringIO
-import os
+import pdfplumber # La herramienta que realmente lee el PDF
 
-# --- LÓGICA DE CONEXIÓN CON LA IA (API) ---
-def llamar_ia_copilot(archivo_pdf):
-    """
-    Esta función es el puente real. 
-    Envía el archivo y recibe los datos dinámicamente.
-    """
-    # Aquí es donde se conectaría con Azure OpenAI o Copilot Studio
-    # La IA analiza el layout del PDF (como el que adjuntaste)
-    # y detecta dónde terminan los Casings y dónde empieza el String.
+st.set_page_config(page_title="Well Planning Hub", layout="wide")
+
+# --- FUNCIÓN DE EXTRACCIÓN REAL ---
+def extraer_tablas_pdf(archivo_subido):
+    todas_las_filas = []
+    with pdfplumber.open(archivo_subido) as pdf:
+        # Recorremos cada página del PDF
+        for pagina in pdf.pages:
+            tablas = pagina.extract_tables()
+            for tabla in tablas:
+                for fila in tabla:
+                    # Limpiamos datos vacíos y filtramos filas irrelevantes
+                    if fila[0] is not None and len(fila) > 3:
+                        todas_las_filas.append(fila)
     
-    # NOTA: Para producción, aquí usamos la API KEY de la compañía.
-    # Por ahora, simulamos la respuesta dinámica del motor de IA.
-    pass
+    if not todas_las_filas:
+        return None
+
+    # Convertimos a DataFrame
+    df = pd.DataFrame(todas_las_filas)
+    # Intentamos asignar la primera fila como encabezado si parece texto
+    df.columns = df.iloc[0]
+    df = df[1:].reset_index(drop=True)
+    return df
 
 # --- INTERFAZ ---
-st.title("🏗️ Well Planning Hub - Extractor Inteligente")
+st.title("🏗️ Well Planning Hub - Extractor Real")
 
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Ecopetrol_logo.svg", width=120)
-    st.divider()
-    menu = st.radio("Módulos", ["Mantenimiento BES", "Abandono", "Workover"])
+    menu = st.radio("Módulos", ["Mantenimiento BES"])
 
 if menu == "Mantenimiento BES":
     st.header("⚙️ Módulo BES: Carga de Archivo")
-    
-    # 1. El usuario sube CUALQUIER PDF
-    archivo = st.file_uploader("Subir esquemático del pozo (PDF)", type=["pdf"])
+    archivo = st.file_uploader("Subir esquemático (PDF)", type=["pdf"])
 
     if archivo:
-        if st.button("⚡ Extraer Datos Dinámicamente"):
-            # 2. Llamamos a la IA para que "lea" y nos devuelva la tabla
-            # No importa el nombre del pozo, la IA buscará las cabeceras estándar
-            with st.spinner("La IA está mapeando las tablas del documento..."):
+        if st.button("⚡ Extraer Datos del PDF"):
+            with st.spinner("Leyendo tablas del documento..."):
+                # Aquí ocurre la magia real
+                resultado = extraer_tablas_pdf(archivo)
                 
-                # Simulamos que la IA nos devolvió un CSV dinámico tras leer el PDF
-                # En la vida real, 'df_dinamico' vendría de la respuesta de Copilot
-                st.session_state.listo = True
-                st.success("¡Lectura completada! Datos extraídos según el formato corporativo.")
+                if resultado is not None:
+                    st.session_state.df_real = resultado
+                    st.success("¡Lectura completada exitosamente!")
+                else:
+                    st.error("No se detectaron tablas claras en el PDF.")
 
-    # 3. Mostrar resultados SÓLO si la IA ya procesó el archivo
-    if st.session_state.get('listo'):
-        st.subheader("📋 Componentes Detectados")
+    # MOSTRAR RESULTADOS
+    if 'df_real' in st.session_state:
+        st.subheader("📋 Componentes Detectados en el Documento")
         
-        # Aquí la tabla se ajusta sola al número de filas que la IA encuentre
-        # Si el PDF tiene 100 filas, mostrará 100. Si tiene 5, mostrará 5.
-        # st.dataframe(df_extraido_por_IA) 
+        # Buscador dinámico sobre los datos reales
+        busqueda = st.text_input("Filtrar componentes (ej: 'ESP', 'Tubing', '7 in')...")
         
-        st.info("La IA ha identificado las secciones de Casing, Liner y Sarta de Producción.")
+        df_mostrar = st.session_state.df_real
+        if busqueda:
+            # Filtra en todas las columnas
+            mask = df_mostrar.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)
+            df_mostrar = df_mostrar[mask]
+
+        st.dataframe(df_mostrar, use_container_width=True)
+        
+        # Botón para descargar lo que leyó
+        csv = df_mostrar.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Tabla en CSV", csv, "extraccion_pozo.csv", "text/csv")
