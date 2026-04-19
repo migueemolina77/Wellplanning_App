@@ -8,7 +8,7 @@ import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE EXTRACCIÓN CON ZONIFICACIÓN ADAPTATIVA
+# 1. MOTOR DE EXTRACCIÓN CON ZONIFICACIÓN Y RESCATE DE OD
 # ==========================================
 
 @st.cache_resource
@@ -29,7 +29,7 @@ def skill_extract_tabular_data(imagen_pil):
 
         # --- Lógica de Agrupamiento por Filas (Eje Y) ---
         filas_dict = {}
-        tolerancia_y = 14  # Ajustado para capturar mejor filas levemente inclinadas
+        tolerancia_y = 14  
 
         for res in results:
             box, texto, conf = res
@@ -47,6 +47,7 @@ def skill_extract_tabular_data(imagen_pil):
 
         datos_tabla = []
         
+        # Procesamos cada fila detectada
         for y in sorted(filas_dict.keys()):
             elementos = sorted(filas_dict[y], key=lambda x: x[0])
             
@@ -55,37 +56,45 @@ def skill_extract_tabular_data(imagen_pil):
             for x, txt in elementos:
                 pct_x = x / ancho_total
                 
-                # --- Clasificación Quirúrgica por Eje X ---
-                if pct_x < 0.08:        # Zona: Long(ft)
+                # --- Clasificación Inicial por Eje X ---
+                if pct_x < 0.08:           # Zona: Long(ft)
                     c_long.append(txt)
-                elif 0.08 <= pct_x < 0.14: # Zona: OD(in)
-                    # Si detectamos texto puro (como "TUBING"), lo movemos a descripción
+                elif 0.08 <= pct_x < 0.16: # Zona: OD(in)
                     if any(char.isdigit() for char in txt): c_od.append(txt)
                     else: c_desc.append(txt)
-                elif 0.14 <= pct_x < 0.72: # Zona: Descripción del Componente
+                elif 0.16 <= pct_x < 0.75: # Zona Central: Descripción
                     c_desc.append(txt)
-                elif 0.72 <= pct_x < 0.86: # Zona: MD Top
+                elif 0.75 <= pct_x < 0.88: # Zona: MD Top
                     c_top.append(txt)
-                else:                   # Zona: Base MD
+                else:                      # Zona Derecha: MD Base
                     c_base.append(txt)
 
             desc_raw = " ".join(c_desc).strip()
-            
-            # Filtro de Calidad: Ignorar encabezados y ruido corto
+            od_raw = "".join(c_od).strip()
+
+            # --- ESTRATEGIA DE RESCATE: Si el OD está vacío pero la descripción tiene el número ---
+            # Busca un patrón decimal (ej: 7.125 o 3.500) al inicio de la descripción
+            if not od_raw and desc_raw:
+                # Patrón: número + punto/coma + 2 o 3 dígitos + posible separador "|"
+                match = re.match(r'^(\d+[\.,]\d{2,3})[\s|]*(.*)', desc_raw)
+                if match:
+                    od_raw = match.group(1)
+                    desc_raw = match.group(2)
+
+            # Filtro de Calidad: Ignorar encabezados y basura
             if len(desc_raw) > 3 and not any(p in desc_raw for p in ["Descripción", "Componente", "PROD", "Long"]):
                 
-                # Función interna para limpiar basura de las columnas numéricas
-                def clean_numeric_cell(lista):
-                    raw = "".join(lista).replace(" ", "")
-                    # Mantiene solo números, puntos y comas
-                    return re.sub(r'[^0-9.,-]', '', raw)
+                def clean_numeric_cell(val):
+                    # Limpia caracteres de ruido (como € o letras pegadas) y normaliza decimal a punto
+                    raw = re.sub(r'[^0-9.,-]', '', val)
+                    return raw.replace(",", ".")
 
                 linea_data = {
-                    "Long(ft)": clean_numeric_cell(c_long),
-                    "OD(in)": clean_numeric_cell(c_od),
-                    "Descripción del Componente": desc_raw,
-                    "MD Top(ft)": clean_numeric_cell(c_top),
-                    "Base MD(ft)": clean_numeric_cell(c_base)
+                    "Long(ft)": clean_numeric_cell("".join(c_long)),
+                    "OD(in)": clean_numeric_cell(od_raw),
+                    "Descripción del Componente": desc_raw.lstrip('| ').strip(),
+                    "MD Top(ft)": clean_numeric_cell("".join(c_top)),
+                    "Base MD(ft)": clean_numeric_cell("".join(c_base))
                 }
                 datos_tabla.append(linea_data)
 
