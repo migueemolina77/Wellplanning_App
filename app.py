@@ -5,31 +5,28 @@ import numpy as np
 import pandas as pd
 import re
 import cv2
-import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE EXTRACCIÓN DE ALTA PRECISIÓN
+# 1. MOTOR DE EXTRACCIÓN CON LÓGICA DE SECUENCIA
 # ==========================================
 
 @st.cache_resource
 def load_ocr_model():
-    """Carga el motor OCR una sola vez para ahorrar memoria."""
     return easyocr.Reader(['es', 'en'], gpu=False)
 
 def preprocess_image(imagen_pil):
-    """Mejora visual: Escalado y Binarización para caracteres pequeños."""
     img = np.array(imagen_pil.convert('RGB'))
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # Upscaling (x2): Fundamental para que el OCR vea bien los puntos decimales
+    # Aumentamos el contraste para separar números pegados
     alto, ancho = gris.shape
     gris = cv2.resize(gris, (ancho * 2, alto * 2), interpolation=cv2.INTER_LANCZOS4)
     
-    # Binarización Adaptativa: Texto negro puro sobre fondo blanco
+    # Binarización más fina para no "engrosar" los números
     binaria = cv2.adaptiveThreshold(
-        gris, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        gris, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 3
     )
     return binaria
 
@@ -39,13 +36,11 @@ def skill_extract_tabular_data(imagen_pil):
         img_pre = preprocess_image(imagen_pil)
         ancho_total = img_pre.shape[1]
         
-        # Ejecución del OCR
         results = reader.readtext(img_pre, detail=1)
         if not results: return None
 
-        # --- Agrupamiento por Filas (Eje Y) ---
         filas_dict = {}
-        tolerancia_y = 22 # Ajustada para el reescalado
+        tolerancia_y = 25 
 
         for res in results:
             box, texto, conf = res
@@ -62,8 +57,6 @@ def skill_extract_tabular_data(imagen_pil):
                 filas_dict[centro_y] = [(centro_x, texto)]
 
         datos_tabla = []
-        
-        # --- Clasificación por Columnas (Eje X) ---
         for y in sorted(filas_dict.keys()):
             elementos = sorted(filas_dict[y], key=lambda x: x[0])
             c_long, c_od, c_desc, c_top, c_base = [], [], [], [], []
@@ -71,36 +64,44 @@ def skill_extract_tabular_data(imagen_pil):
             for x, txt in elementos:
                 pct_x = x / ancho_total
                 
-                # Zonificación dinámica (Basada en image_3820c7.png)
-                if pct_x < 0.10: c_long.append(txt)
-                elif 0.10 <= pct_x < 0.20: 
+                # REFINAMIENTO DE COLUMNAS (Basado en tu última imagen)
+                if pct_x < 0.12: c_long.append(txt)
+                elif 0.12 <= pct_x < 0.22: 
                     if any(c.isdigit() for c in txt): c_od.append(txt)
                     else: c_desc.append(txt)
-                elif 0.20 <= pct_x < 0.70: c_desc.append(txt)
-                elif 0.70 <= pct_x < 0.86: c_top.append(txt)
-                else: c_base.append(txt)
+                elif 0.22 <= pct_x < 0.68: c_desc.append(txt)
+                elif 0.68 <= pct_x < 0.84: c_top.append(txt) # MD Top
+                else: c_base.append(txt) # Base MD
 
-            # --- Limpieza y Rescate ---
-            desc_raw = " ".join(c_desc).replace("/", "").replace("|", "").strip()
+            desc_raw = " ".join(c_desc).strip()
+            # Limpieza rápida de ruidos comunes de OCR en descripciones
+            desc_raw = desc_raw.replace("/", "").replace("|", "").strip()
             
-            def clean_numeric(v_list):
+            # --- PROCESAMIENTO NUMÉRICO ---
+            def clean_n(v_list):
                 v = "".join(v_list).replace(",", ".")
                 return re.sub(r'[^0-9.]', '', v)
 
-            val_top = clean_numeric(c_top)
-            val_base = clean_numeric(c_base)
+            val_top = clean_n(c_top)
+            val_base = clean_n(c_base)
 
-            # Estrategia de División: Si el Top absorbió a la Base (ej: 24.525.4)
+            # LÓGICA DE RESCATE: Si Top tiene muchos dígitos y Base está vacío
+            # Ejemplo: "24.525.4" -> Top: 24.5, Base: 25.4
             if val_top and not val_base:
-                parts = re.findall(r'\d+\.\d+|\d+', val_top)
-                if len(parts) >= 2:
-                    val_top = parts[0]
-                    val_base = parts[1]
+                puntos = [m.start() for m in re.finditer(r'\.', val_top)]
+                if len(puntos) >= 2:
+                    corte = puntos[1] # Cortamos en el segundo punto
+                    val_base = val_top[corte:]
+                    val_top = val_top[:corte]
+                elif len(val_top) > 6: # Si es un número muy largo sin puntos extra
+                    mitad = len(val_top) // 2
+                    val_base = val_top[mitad:]
+                    val_top = val_top[:mitad]
 
-            if len(desc_raw) > 3 and not any(p in desc_raw for p in ["Descripción", "Componente", "MD"]):
+            if len(desc_raw) > 2 and not any(p in desc_raw for p in ["Descripción", "Componente", "PROD"]):
                 datos_tabla.append({
-                    "Long(ft)": clean_numeric(c_long),
-                    "OD(in)": clean_numeric(c_od),
+                    "Long(ft)": clean_n(c_long),
+                    "OD(in)": clean_n(c_od),
                     "Descripción del Componente": desc_raw,
                     "MD Top(ft)": val_top,
                     "Base MD(ft)": val_base
@@ -108,22 +109,24 @@ def skill_extract_tabular_data(imagen_pil):
 
         df = pd.DataFrame(datos_tabla)
 
-        # --- LÓGICA DE CONTINUIDAD GEOMÉTRICA ---
-        # Si Base(n) está vacía, se asume que es el Top(n+1)
+        # --- LÓGICA FINAL: RELLENO POR CONTINUIDAD ---
+        # En Well Planning, Base(n) = Top(n+1). Si falta la base, la inferimos.
         for i in range(len(df) - 1):
             if not df.loc[i, "Base MD(ft)"] or df.loc[i, "Base MD(ft)"] == "":
-                df.loc[i, "Base MD(ft)"] = df.loc[i+1, "MD Top(ft)"]
+                siguiente_top = df.loc[i+1, "MD Top(ft)"]
+                if siguiente_top:
+                    df.loc[i, "Base MD(ft)"] = siguiente_top
 
         return df
             
     except Exception as e:
-        st.error(f"Error técnico en el motor: {str(e)}")
+        st.error(f"Error: {str(e)}")
         return None
 
 # ==========================================
-# 2. INTERFAZ STREAMLIT
+# 2. INTERFAZ (Sin cambios significativos)
 # ==========================================
-st.set_page_config(page_title="Well Plan CUA", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - Operaciones CUA", page_icon="🏗️", layout="wide")
 
 if 'menu' not in st.session_state:
     st.session_state.menu = "Home"
@@ -136,31 +139,28 @@ with st.sidebar:
 
 if st.session_state.menu == "Home":
     st.title("🚧 Construcción Well Plan - Operaciones CUA")
-    st.info("Sistema de extracción de estados mecánicos mediante visión artificial.")
-    if st.button("⚙️ Entrar a Módulo BES", use_container_width=True):
-        st.session_state.menu = "BES"
-        st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⚙️ 2. Mantenimiento BES", use_container_width=True): st.session_state.menu = "BES"
+    with col2:
+        if st.button("🛠️ 4. Workover", use_container_width=True): st.session_state.menu = "Workover"
 
 elif st.session_state.menu == "BES":
-    st.title("⚙️ Extracción de Sarta de Producción")
+    st.title("⚙️ Módulo de Extracción BES")
+    tab1, tab2, tab3 = st.tabs(["🏗️ Cabezal", "🕳️ Liner", "🔌 Sarta"])
     
-    # Botón de pegado especial
-    pasted = paste_image_button(label="📋 Clic aquí y presiona Ctrl+V para pegar el recorte", key="paster_main")
-    
-    if pasted.image_data:
-        st.image(pasted.image_data, caption="Imagen cargada para análisis", width=800)
-        
-        if st.button("🚀 Extraer Datos con Lógica de Continuidad"):
-            with st.status("Mejorando resolución y analizando filas...") as s:
-                df_final = skill_extract_tabular_data(pasted.image_data)
-                s.update(label="¡Análisis finalizado!", state="complete")
-            
-            if df_final is not None and not df_final.empty:
-                st.success("Tabla recuperada con éxito:")
-                st.dataframe(df_final, use_container_width=True)
-                
-                # Exportación
-                csv = df_final.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Descargar Excel/CSV", csv, "sarta_pozo.csv", "text/csv")
-            else:
-                st.error("No se pudieron extraer datos. Prueba con un recorte más nítido.")
+    def procesar(label, key):
+        pasted = paste_image_button(label=f"📋 Pegar Tabla de {label}", key=key)
+        if pasted.image_data:
+            st.image(pasted.image_data, caption="Imagen detectada", width=700)
+            if st.button(f"🚀 Extraer {label}", key=f"btn_{key}"):
+                df = skill_extract_tabular_data(pasted.image_data)
+                if df is not None:
+                    st.success("Extracción completada con lógica de continuidad.")
+                    st.dataframe(df, use_container_width=True)
+                    st.download_button("📥 Descargar CSV", df.to_csv(index=False), f"{label}.csv")
+
+    with tab3: procesar("Sarta", "sarta_paste")
+
+else:
+    st.warning("Sección en desarrollo.")
