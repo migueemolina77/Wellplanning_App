@@ -8,7 +8,7 @@ import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE EXTRACCIÓN CON ZONIFICACIÓN Y RESCATE DE OD
+# 1. MOTOR DE EXTRACCIÓN OPTIMIZADO (ZONIFICACIÓN + RESCATE + DIVISIÓN)
 # ==========================================
 
 @st.cache_resource
@@ -56,45 +56,54 @@ def skill_extract_tabular_data(imagen_pil):
             for x, txt in elementos:
                 pct_x = x / ancho_total
                 
-                # --- Clasificación Inicial por Eje X ---
+                # --- Clasificación por Eje X (Ajustado para evitar solapamiento) ---
                 if pct_x < 0.08:           # Zona: Long(ft)
                     c_long.append(txt)
                 elif 0.08 <= pct_x < 0.16: # Zona: OD(in)
                     if any(char.isdigit() for char in txt): c_od.append(txt)
                     else: c_desc.append(txt)
-                elif 0.16 <= pct_x < 0.75: # Zona Central: Descripción
+                elif 0.16 <= pct_x < 0.70: # Zona Central: Descripción (Se reduce para proteger Top/Base)
                     c_desc.append(txt)
-                elif 0.75 <= pct_x < 0.88: # Zona: MD Top
+                elif 0.70 <= pct_x < 0.88: # Zona: MD Top
                     c_top.append(txt)
                 else:                      # Zona Derecha: MD Base
                     c_base.append(txt)
 
             desc_raw = " ".join(c_desc).strip()
             od_raw = "".join(c_od).strip()
+            top_raw = "".join(c_top).strip()
+            base_raw = "".join(c_base).strip()
 
-            # --- ESTRATEGIA DE RESCATE: Si el OD está vacío pero la descripción tiene el número ---
-            # Busca un patrón decimal (ej: 7.125 o 3.500) al inicio de la descripción
+            # --- ESTRATEGIA 1: Rescate de OD (in) desde la descripción ---
             if not od_raw and desc_raw:
-                # Patrón: número + punto/coma + 2 o 3 dígitos + posible separador "|"
-                match = re.match(r'^(\d+[\.,]\d{2,3})[\s|]*(.*)', desc_raw)
-                if match:
-                    od_raw = match.group(1)
-                    desc_raw = match.group(2)
+                match_od = re.match(r'^(\d+[\.,]\d{2,3})[\s|]*(.*)', desc_raw)
+                if match_od:
+                    od_raw = match_od.group(1)
+                    desc_raw = match_od.group(2)
+
+            # --- ESTRATEGIA 2: División de MD Top y Base MD pegados ---
+            # Si MD Top parece contener dos números o MD Base está vacío
+            if not base_raw and top_raw:
+                # Busca patrones de números decimales (ej: 25.43362. o 3.362.83.370.8)
+                parts = re.findall(r'\d+\.\d+|\d+\.', top_raw)
+                if len(parts) >= 2:
+                    top_raw = parts[0]
+                    base_raw = parts[1]
 
             # Filtro de Calidad: Ignorar encabezados y basura
             if len(desc_raw) > 3 and not any(p in desc_raw for p in ["Descripción", "Componente", "PROD", "Long"]):
                 
-                def clean_numeric_cell(val):
-                    # Limpia caracteres de ruido (como € o letras pegadas) y normaliza decimal a punto
-                    raw = re.sub(r'[^0-9.,-]', '', val)
-                    return raw.replace(",", ".")
+                def clean_numeric(val):
+                    # Limpieza total: solo números y un solo punto decimal
+                    raw = re.sub(r'[^0-9.]', '', val.replace(",", "."))
+                    return raw
 
                 linea_data = {
-                    "Long(ft)": clean_numeric_cell("".join(c_long)),
-                    "OD(in)": clean_numeric_cell(od_raw),
+                    "Long(ft)": clean_numeric("".join(c_long)),
+                    "OD(in)": clean_numeric(od_raw),
                     "Descripción del Componente": desc_raw.lstrip('| ').strip(),
-                    "MD Top(ft)": clean_numeric_cell("".join(c_top)),
-                    "Base MD(ft)": clean_numeric_cell("".join(c_base))
+                    "MD Top(ft)": clean_numeric(top_raw),
+                    "Base MD(ft)": clean_numeric(base_raw)
                 }
                 datos_tabla.append(linea_data)
 
@@ -144,25 +153,25 @@ elif st.session_state.menu == "BES":
             archivo = st.file_uploader(f"Cargar {label_id}", type=["jpg", "png", "jpeg"], key=f"u_{key_suffix}")
             if archivo: img_to_process = Image.open(archivo)
         with col_p:
-            st.write(f"O pega el recorte de {label_id}:")
-            pasted = paste_image_button(label=f"📋 Clic y Ctrl+V ({label_id})", key=f"p_{key_suffix}")
+            st.write(f"O pega el recorte:")
+            pasted = paste_image_button(label=f"📋 Clic y Ctrl+V", key=f"p_{key_suffix}")
             if pasted.image_data: img_to_process = pasted.image_data
 
         if img_to_process:
             st.image(img_to_process, width=800, caption="Recorte a procesar")
-            if st.button(f"🚀 Extraer Tabla de {label_id}", key=f"b_{key_suffix}"):
+            if st.button(f"🚀 Extraer Tabla", key=f"b_{key_suffix}"):
                 with st.status("Analizando geometría de la tabla...") as s:
                     df = skill_extract_tabular_data(img_to_process)
                     s.update(label="Análisis completado", state="complete")
                 
                 if df is not None and not df.empty:
-                    st.success("**Datos organizados por columnas:**")
+                    st.success("**Datos organizados:**")
                     st.dataframe(df, use_container_width=True)
                     
                     csv = df.to_csv(index=False).encode('utf-8')
                     st.download_button("📥 Descargar Tabla (CSV)", csv, f"{label_id}.csv", "text/csv")
                 else:
-                    st.error("No se detectaron datos tabulares. Intenta un recorte más nítido.")
+                    st.error("No se detectaron datos. Intenta un recorte más nítido.")
 
     with tab1: procesar_seccion("Cabezal", "head")
     with tab2: procesar_seccion("Liner", "liner")
