@@ -36,7 +36,7 @@ with st.sidebar:
     
     # SOLUCIÓN AL ERROR: Usamos un container para el borde en vez de st.markdown directamente
     with st.container(border=True):
-        st.markdown("<p style='text-align: center; margin-bottom: 0;'>Operaciones CUA</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; margin-bottom: 0;'>Operaciones CLO</p>", unsafe_allow_html=True)
     
     st.divider()
     
