@@ -9,7 +9,7 @@ import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE IA REFINADO (ALTA FIDELIDAD)
+# 1. MOTOR DE IA REFINADO (CON CIRUGÍA DE STRINGS)
 # ==========================================
 
 @st.cache_resource
@@ -17,21 +17,14 @@ def load_ocr_model():
     return easyocr.Reader(['es', 'en'], gpu=False)
 
 def preprocess_image(imagen_pil):
-    """
-    Optimización específica para tablas con líneas claras como image_421969.png.
-    """
     img = np.array(imagen_pil.convert('RGB'))
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # Escalado para asegurar que los puntos decimales se vean como pixeles sólidos
     alto, ancho = gris.shape
     img_res = cv2.resize(gris, (ancho * 3, alto * 3), interpolation=cv2.INTER_CUBIC)
     
-    # Suavizado leve para quitar artefactos de compresión del pegado
     blurred = cv2.GaussianBlur(img_res, (3, 3), 0)
-    
-    # Umbralizado binario inverso (hace que el texto resalte más sobre el fondo)
     _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
     return thresh
@@ -42,12 +35,11 @@ def skill_extract_tabular_data(imagen_pil):
         img_pre = preprocess_image(imagen_pil)
         ancho_total = img_pre.shape[1]
         
-        # Usamos paragraph=False para no perder precisión en celdas individuales
         results = reader.readtext(img_pre, detail=1, paragraph=False)
         if not results: return None
 
         filas_dict = {}
-        tolerancia_y = 25 # Mayor tolerancia por el reescalado x3
+        tolerancia_y = 25 
 
         for res in results:
             box, texto, conf = res
@@ -70,39 +62,46 @@ def skill_extract_tabular_data(imagen_pil):
 
             for x, txt in elementos:
                 pct_x = x / ancho_total
-                
-                # Ajuste milimétrico de columnas basado en image_421969.png
                 if pct_x < 0.07: c_long.append(txt)
                 elif 0.07 <= pct_x < 0.14: c_od.append(txt)
                 elif 0.14 <= pct_x < 0.78: c_desc.append(txt)
                 elif 0.78 <= pct_x < 0.89: c_top.append(txt)
                 else: c_base.append(txt)
 
+            # --- CIRUGÍA DE DATOS ---
             desc_raw = " ".join(c_desc).strip()
+            od_raw = "".join(c_od).strip()
             
-            def clean_n(v_list):
-                v = "".join(v_list).replace(",", ".")
-                # Captura números con puntos decimales
+            # Si el OD está vacío pero la descripción empieza por un número (ej: 3.500|...)
+            if od_raw == "":
+                match_od = re.match(r'^(\d+\.\d+|\d+)', desc_raw)
+                if match_od:
+                    od_raw = match_od.group(1)
+                    # Limpiamos la descripción del número extraído y caracteres basura
+                    desc_raw = re.sub(r'^[\d.|/ ]+', '', desc_raw).strip()
+
+            def clean_n(v):
+                v = v.replace(",", ".")
                 res = re.findall(r'\d+\.\d+|\d+', v)
                 return res[0] if res else ""
 
-            top_val = clean_n(c_top)
-            base_val = clean_n(c_base)
+            long_val = clean_n("".join(c_long))
+            od_val = clean_n(od_raw)
+            top_val = clean_n("".join(c_top))
+            base_val = clean_n("".join(c_base))
 
-            # Validación de limpieza para la descripción
-            if len(desc_raw) > 3 and not any(p in desc_raw for p in ["PROD", "STRING", "Base"]):
+            if len(desc_raw) > 3 and not any(p in desc_raw for p in ["PROD", "STRING", "Base", "Componente"]):
                 datos_tabla.append({
-                    "Long(ft)": clean_n(c_long),
-                    "OD(in)": clean_n(c_od),
-                    "Descripción del Componente": desc_raw.lstrip('|/ ').strip(),
+                    "Long(ft)": long_val,
+                    "OD(in)": od_val,
+                    "Descripción del Componente": desc_raw,
                     "MD Top(ft)": top_val,
                     "Base MD(ft)": base_val
                 })
 
         df = pd.DataFrame(datos_tabla)
         
-        # --- LÓGICA DE AUTO-RELLENO ---
-        # Si Base MD está vacía, toma el Top de la siguiente fila
+        # Auto-relleno de Base MD basado en el Top siguiente
         for i in range(len(df) - 1):
             if df.loc[i, "Base MD(ft)"] == "" and df.loc[i+1, "MD Top(ft)"] != "":
                 df.loc[i, "Base MD(ft)"] = df.loc[i+1, "MD Top(ft)"]
@@ -113,7 +112,7 @@ def skill_extract_tabular_data(imagen_pil):
         return None
 
 # ==========================================
-# 2. INTERFAZ (MENÚ IZQUIERDO + PESTAÑAS)
+# 2. INTERFAZ Y NAVEGACIÓN
 # ==========================================
 st.set_page_config(page_title="Well Planning CUA", page_icon="🏗️", layout="wide")
 
@@ -134,15 +133,19 @@ def render_extractor(label):
     st.subheader(f"Extracción de {label}")
     pasted = paste_image_button(label=f"📋 Pegar imagen de {label}", key=f"p_{label}")
     if pasted.image_data:
-        st.image(pasted.image_data, caption="Calidad de imagen detectada", width=800)
-        if st.button(f"🚀 Procesar {label}", key=f"b_{label}"):
-            df = skill_extract_tabular_data(pasted.image_data)
-            if df is not None and not df.empty:
-                st.dataframe(df, use_container_width=True)
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Descargar CSV", csv, f"{label}.csv")
-            else:
-                st.warning("El motor no pudo leer las celdas. Asegúrate de capturar las cabeceras.")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.image(pasted.image_data, caption="Imagen detectada", use_container_width=True)
+        with col2:
+            if st.button(f"🚀 Procesar {label}", key=f"b_{label}"):
+                df = skill_extract_tabular_data(pasted.image_data)
+                if df is not None and not df.empty:
+                    # Usamos data_editor para permitir ajustes manuales finales
+                    df_final = st.data_editor(df, use_container_width=True, num_rows="dynamic")
+                    csv = df_final.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Descargar CSV", csv, f"{label}.csv")
+                else:
+                    st.warning("No se detectaron datos. Intenta capturar las líneas divisorias de la tabla.")
 
 if st.session_state.menu == "Home":
     st.title("🚧 Sistema Unificado Well Planning")
