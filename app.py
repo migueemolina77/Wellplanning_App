@@ -9,7 +9,7 @@ import io
 from streamlit_paste_button import paste_image_button
 
 # ==========================================
-# 1. MOTOR DE IA (PREPROCESAMIENTO + OCR + LÓGICA)
+# 1. MOTOR DE IA CON AUTO-SANACIÓN HÍBRIDA
 # ==========================================
 
 @st.cache_resource
@@ -31,6 +31,35 @@ def preprocess_image(imagen_pil):
         img_res, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
     )
     return binaria
+
+def heal_well_data(df):
+    """
+    LOGICA HÍBRIDA: Supervisión de Ingeniería sobre el OCR.
+    Corrige errores matemáticos y de diámetros estándar.
+    """
+    # 1. Convertir columnas a numéricas para operar
+    for col in ["Long(ft)", "OD(in)", "MD Top(ft)", "Base MD(ft)"]:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 2. Corregir ODs (Lista blanca de diámetros comunes en CUA)
+    ods_comunes = [2.375, 2.875, 3.500, 4.500, 5.500, 7.000, 9.625]
+    def fix_od(val):
+        if pd.isna(val): return val
+        return min(ods_comunes, key=lambda x: abs(x - val)) if any(abs(x - val) < 0.2 for x in ods_comunes) else val
+    
+    df["OD(in)"] = df["OD(in)"].apply(fix_od)
+
+    # 3. Auto-Sanación de Profundidades (Base = Top + Long)
+    for i in range(len(df)):
+        # Si falta la Base pero tenemos Top y Long
+        if pd.isna(df.loc[i, "Base MD(ft)"]) and not pd.isna(df.loc[i, "MD Top(ft)"]) and not pd.isna(df.loc[i, "Long(ft)"]):
+            df.loc[i, "Base MD(ft)"] = round(df.loc[i, "MD Top(ft)"] + df.loc[i, "Long(ft)"], 2)
+        
+        # Si falta el Top pero es la continuación del anterior
+        if i > 0 and pd.isna(df.loc[i, "MD Top(ft)"]) and not pd.isna(df.loc[i-1, "Base MD(ft)"]):
+            df.loc[i, "MD Top(ft)"] = df.loc[i-1, "Base MD(ft)"]
+
+    return df
 
 def skill_extract_tabular_data(imagen_pil):
     try:
@@ -80,11 +109,6 @@ def skill_extract_tabular_data(imagen_pil):
 
             long_n, od_n, top_n, base_n = clean_n(c_long), clean_n(c_od), clean_n(c_top), clean_n(c_base)
 
-            # Dividir si Top y Base se pegaron
-            if top_n and not base_n:
-                parts = re.findall(r'\d+\.\d+|\d+', top_n)
-                if len(parts) >= 2: top_n, base_n = parts[0], parts[1]
-
             if len(desc_raw) > 3 and not any(p in desc_raw for p in ["Descripción", "Componente", "MD", "PROD"]):
                 datos_tabla.append({
                     "Long(ft)": long_n, "OD(in)": od_n,
@@ -93,17 +117,17 @@ def skill_extract_tabular_data(imagen_pil):
                 })
 
         df = pd.DataFrame(datos_tabla)
-        # Relleno por continuidad (Base n = Top n+1)
-        for i in range(len(df) - 1):
-            if not df.loc[i, "Base MD(ft)"]:
-                df.loc[i, "Base MD(ft)"] = df.loc[i+1, "MD Top(ft)"]
+        
+        # APLICAR RESOLUCIÓN HÍBRIDA
+        df = heal_well_data(df)
+        
         return df
     except Exception as e:
         st.error(f"Error: {str(e)}")
         return None
 
 # ==========================================
-# 2. INTERFAZ Y NAVEGACIÓN (CABEZAL, LINER, SARTA)
+# 2. INTERFAZ Y NAVEGACIÓN
 # ==========================================
 st.set_page_config(page_title="Well Planning CUA", page_icon="🏗️", layout="wide")
 
@@ -128,13 +152,13 @@ def render_extractor(label):
         if st.button(f"🚀 Procesar {label}", key=f"btn_{label}"):
             df = skill_extract_tabular_data(pasted.image_data)
             if df is not None:
-                st.success("Extracción completada")
+                st.success("Extracción completada con Auto-Sanación Híbrida")
                 st.dataframe(df, use_container_width=True)
                 st.download_button("📥 Descargar CSV", df.to_csv(index=False), f"{label}.csv")
 
 if st.session_state.menu == "Home":
     st.title("🚧 Well Planning - Operaciones CUA")
-    st.info("Seleccione un módulo en el menú lateral para comenzar.")
+    st.info("Monitor de Extracción Híbrida activado: OCR + Validación Geométrica.")
 
 elif st.session_state.menu == "BES":
     st.title("⚙️ Módulo: Mantenimiento BES")
