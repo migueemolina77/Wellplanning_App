@@ -35,7 +35,7 @@ def skill_extract_text_local(imagen_pil):
 # ==========================================
 # 2. INTERFAZ DE USUARIO (STREAMLIT)
 # ==========================================
-st.set_page_config(page_title="Well Planning - Operaciones CUA", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Well Planning - Operaciones CLO", page_icon="🏗️", layout="wide")
 
 # Gestión de navegación
 if 'menu' not in st.session_state:
